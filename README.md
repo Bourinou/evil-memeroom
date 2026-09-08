@@ -13,6 +13,7 @@ MemeRoom partage du texte, des images, des vidéos et des sons entre les membres
 
 - [Contribuer](CONTRIBUTING.md) et [crédits](AUTHORS.md)
 - [Architecture et responsabilités des dossiers](docs/ARCHITECTURE.md)
+- [Audit de structure, maintenance et ouverture aux contributions — septembre 2026](docs/AUDIT-2026-09-08.md)
 - [Développement, interface et tests](docs/DEVELOPPEMENT.md)
 - [Sécurité et signalement privé](SECURITY.md)
 - [Installer le serveur derrière Nginx](DEPLOYER.md)
