@@ -7,7 +7,7 @@ Contraintes conservées : fonctionnalités et interface identiques, licence CC B
 - [x] Contrats vérifiés automatiquement.
 - [x] Mesures reproductibles de CPU, mémoire, transferts et latence.
 - [x] Validation locale Windows/Linux, installation Windows et antivirus réel.
-- [ ] CI GitHub entièrement verte : tests Node sur les trois systèmes, ClamAV et parcours Mac exécutés ; correction du téléchargement initial d’Electron dans le job Linux en cours de validation.
+- [x] CI GitHub entièrement verte : tests Node et Electron sur les trois systèmes, compilations, installation Windows et ClamAV réel.
 
 ## Journal TDD
 
@@ -59,3 +59,5 @@ Ces mesures portent sur la boucle locale, les transferts et les caches ; elles e
 La branche a été publiée par HTTPS après accord explicite. La [première exécution GitHub](https://github.com/Rose-Roubaud/memeroom/actions/runs/34263575340) confirme les tests Node sur les trois systèmes, ClamAV réel et les parcours natifs Mac. Elle détecte que le binaire d’Electron 44 est téléchargé au premier usage : le job Linux doit exécuter son installateur avant de configurer le sandbox. La correction conserve le sandbox et ajoute cette étape explicite, sans changer l’application. Le [suivi de la branche](https://github.com/Rose-Roubaud/memeroom/actions?query=branch%3Acodex%2Frefonte-maintenable) fournit les résultats ultérieurs.
 
 La deuxième exécution identifie aussi `xwininfo`, dépendance du contrôle natif X11, absent du runner Linux. Sur Mac, une capture d’écran lente peut consommer la courte période où la vidéo est terminée et l’audio continue : l’assertion et le contrôle de visibilité passent désormais avant cette capture. Les assertions restent identiques ; aucun délai arbitraire ni relancement automatique ne masque l’échec. Les artefacts ciblés restent exportables même depuis le dossier caché `.test-artifacts`.
+
+**Validation finale :** les [sept jobs de l’exécution 34264739355](https://github.com/Rose-Roubaud/memeroom/actions/runs/34264739355) réussissent sur le commit source `63a173d` : Node et Electron sous Windows, Linux et macOS, compilation des livrables, installation/réinstallation/désinstallation NSIS et ClamAV réel. Le dernier commit ne fait qu’enregistrer ce résultat dans ce document.
