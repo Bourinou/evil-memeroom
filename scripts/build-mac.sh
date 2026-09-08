@@ -7,7 +7,7 @@ build_dir="$(mktemp -d /tmp/memeroom-mac.XXXXXX)"
 trap 'if [[ "${MEMEROOM_KEEP_BUILD:-0}" != 1 ]]; then rm -rf -- "$build_dir"; fi' EXIT
 echo "Dossier de compilation Mac : $build_dir"
 mkdir -p "$source_dir/release/mac"
-for entry in desktop public server shared scripts LICENSE AUTHORS.md package.json package-lock.json; do cp -R -- "$source_dir/$entry" "$build_dir/"; done
+node "$source_dir/scripts/prepare-build.mjs" "$build_dir"
 cd -- "$build_dir"
 npm ci --ignore-scripts --no-audit --no-fund
 if [[ "${1:-}" == --signed ]]; then

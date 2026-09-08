@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import yazl from 'yazl';
 import { listDownloads } from '../server/releases.mjs';
+import { SERVER_FILES } from './source-files.mjs';
 
 export async function packServer({
   root,
@@ -23,29 +24,7 @@ export async function packServer({
         await add(path.join(absolute, child), `${name}/${child}`);
     } else if (info.isFile()) entries.push({ absolute, name });
   }
-  for (const entry of [
-    'server',
-    'shared',
-    'public',
-    'deploy',
-    'docs',
-    'package.json',
-    'package-lock.json',
-    'Dockerfile',
-    'compose.yaml',
-    'compose.nginx.yaml',
-    'nginx-location.conf.example',
-    'Caddyfile',
-    '.env.example',
-    '.dockerignore',
-    'README.md',
-    'DEPLOYER.md',
-    'LICENSE',
-    'AUTHORS.md',
-    'CONTRIBUTING.md',
-    'SECURITY.md',
-  ])
-    await add(path.join(root, entry), entry);
+  for (const entry of SERVER_FILES) await add(path.join(root, entry), entry);
   if (includeReleases) {
     const downloads = await listDownloads(releasesDir);
     if (!Object.values(downloads).some(Boolean)) throw new Error('Aucun téléchargement préparé.');

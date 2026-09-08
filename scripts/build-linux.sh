@@ -12,9 +12,7 @@ trap 'if [[ "${MEMEROOM_KEEP_BUILD:-0}" != 1 ]]; then rm -rf -- "$build_dir"; fi
 echo "Dossier de compilation : $build_dir"
 mkdir -p "$source_dir/.test-artifacts" "$source_dir/release"
 printf '%s\n' "$build_dir" > "$source_dir/.test-artifacts/linux-build-path.txt"
-for entry in desktop public server shared tests scripts LICENSE AUTHORS.md package.json package-lock.json; do
-  cp -R -- "$source_dir/$entry" "$build_dir/"
-done
+node "$source_dir/scripts/prepare-build.mjs" "$build_dir"
 
 cd -- "$build_dir"
 # Keep Linux dependencies separate from any Windows node_modules in the source tree.
