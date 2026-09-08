@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import path from 'node:path';
-import os from 'node:os';
+import { createTempDirectory } from '../shared/node/temp-directory.cjs';
 import { randomUUID } from 'node:crypto';
 import { LIMITS } from '../shared/protocol.mjs';
 import { detectMedia } from './media.mjs';
@@ -14,7 +14,9 @@ export class MediaStorage {
     this.pending = new Set();
   }
   async start() {
-    this.directory = await mkdtemp(path.join(os.tmpdir(), 'memeroom-media-'));
+    this.directory = await createTempDirectory('memeroom-media-', {
+      root: process.env.MEMEROOM_TEMP_DIR,
+    });
   }
   async receive(request) {
     const file = path.join(this.directory, randomUUID());

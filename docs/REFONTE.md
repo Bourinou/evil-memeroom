@@ -27,3 +27,7 @@ La suite complète passe après adaptation de l'assertion. Les scénarios appare
 Trois tests ajoutés avant l'implémentation échouent avec « Action inconnue. » : suppression par le propriétaire avec révocation des médias/sessions, capacité libérée après redémarrage, et conservation des accès si l'écriture sur disque échoue. La suppression sera accessible par le protocole et l'administration, sans changement de l'interface.
 
 Les trois tests passent après ajout de la suppression persistée. Un quatrième test d'administration, d'abord en échec (404 au lieu de 403), valide le secret distinct, l'activation facultative et la suppression durable. L'administration locale réutilise la même opération métier, sans éditer le fichier de rooms pendant que le serveur fonctionne.
+
+### Temporaires
+
+Deux tests écrits avant le module de gestion des temporaires valident la récupération d'une instance terminée, la conservation d'une instance active et des dossiers sans propriétaire, ainsi que le refus d'un préfixe traversant. Le stockage serveur utilise maintenant des marqueurs de propriété ; les builds temporaires sont nettoyés sauf `MEMEROOM_KEEP_BUILD=1`. Les anciens dossiers dépourvus de marqueur sont volontairement laissés au nettoyage système. L'intégration du cache desktop et de l'arrêt asynchrone suit dans le lot lecture.

@@ -4,6 +4,7 @@ set -euo pipefail
 # Developer ID signing, notarization and runtime validation require a Mac.
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$(mktemp -d /tmp/memeroom-mac.XXXXXX)"
+trap 'if [[ "${MEMEROOM_KEEP_BUILD:-0}" != 1 ]]; then rm -rf -- "$build_dir"; fi' EXIT
 echo "Dossier de compilation Mac : $build_dir"
 mkdir -p "$source_dir/release/mac"
 for entry in desktop public server shared scripts LICENSE AUTHORS.md package.json package-lock.json; do cp -R -- "$source_dir/$entry" "$build_dir/"; done

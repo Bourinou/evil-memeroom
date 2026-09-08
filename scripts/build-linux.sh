@@ -8,6 +8,7 @@ fi
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$(mktemp -d /tmp/memeroom-linux.XXXXXX)"
+trap 'if [[ "${MEMEROOM_KEEP_BUILD:-0}" != 1 ]]; then rm -rf -- "$build_dir"; fi' EXIT
 echo "Dossier de compilation : $build_dir"
 mkdir -p "$source_dir/.test-artifacts" "$source_dir/release"
 printf '%s\n' "$build_dir" > "$source_dir/.test-artifacts/linux-build-path.txt"
