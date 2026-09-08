@@ -6,8 +6,8 @@ services:
     environment:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       MEMEROOM_RELEASES_DIR: /releases
-      MEMEROOM_TRUST_PROXY: "1"
-      MEMEROOM_SCAN_REQUIRED: "1"
+      MEMEROOM_TRUST_PROXY: '1'
+      MEMEROOM_SCAN_REQUIRED: '1'
       CLAMAV_HOST: clamav
       MEMEROOM_FFPROBE: /usr/bin/ffprobe
     depends_on:
@@ -16,7 +16,7 @@ services:
         # Media publication still requires a successful antivirus scan.
         condition: service_started
     ports:
-      - "127.0.0.1:${MEMEROOM_HTTP_PORT:-3210}:3210"
+      - '127.0.0.1:${MEMEROOM_HTTP_PORT:-3210}:3210'
     volumes:
       - memeroom_data:/data
       - ./releases:/releases:ro

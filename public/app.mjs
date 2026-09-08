@@ -1,43 +1,121 @@
-import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS } from './shared/protocol.mjs';
+import {
+  DEFAULT_SETTINGS,
+  cleanSettings,
+  cleanClientState,
+  normalizeServer,
+  parseSubtitles,
+  hasTimedMedia,
+  validDismissShortcut,
+  LIMITS,
+} from './shared/protocol.mjs';
 import { Connection } from './connection.mjs';
 import { mountReaction } from './media-view.mjs';
 
-const $ = selector => document.querySelector(selector);
+const $ = (selector) => document.querySelector(selector);
 const native = window.memeroom;
 if (!native) location.replace('/');
 const storageKey = 'memeroom.client.v2';
-const node = (tag, text, className) => { const value = document.createElement(tag); if (text !== undefined) value.textContent = text; if (className) value.className = className; return value; };
-function readStorage(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
+const node = (tag, text, className) => {
+  const value = document.createElement(tag);
+  if (text !== undefined) value.textContent = text;
+  if (className) value.className = className;
+  return value;
+};
+function readStorage(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
 let client = cleanClientState(readStorage(storageKey) || {});
-let settings = { ...DEFAULT_SETTINGS }, localServer = location.origin, addresses = [];
-let room = null, connection = null, target = null, library = [], visual = null, audio = null, cues = [];
-let connected = false, connecting = false, sending = false, importing = false, joining = false;
-let mode = 'create', epoch = 0, retryTimer, retries = 0, toastTimer, preview, nextSend = 0, directoryRequest;
+let settings = { ...DEFAULT_SETTINGS },
+  localServer = location.origin,
+  addresses = [];
+let room = null,
+  connection = null,
+  target = null,
+  library = [],
+  visual = null,
+  audio = null,
+  cues = [];
+let connected = false,
+  connecting = false,
+  sending = false,
+  importing = false,
+  joining = false;
+let mode = 'create',
+  epoch = 0,
+  retryTimer,
+  retries = 0,
+  toastTimer,
+  preview,
+  nextSend = 0,
+  directoryRequest;
 let status = 'Aucune room sélectionnée.';
-let recordingShortcut = false, shortcutBusy = false;
+let recordingShortcut = false,
+  shortcutBusy = false;
 let mac = false;
-let presets = [], editingPreset = null, presetBusy = false;
-const shortcutLabel = value => value ? value.split('+').map(key => ({ Control:'Ctrl', Shift:'Maj', Super:mac ? 'Cmd' : 'Windows', Space:'Espace', Up:'Haut', Down:'Bas', Left:'Gauche', Right:'Droite' }[key] || key)).join(' + ') : 'Choisir un raccourci';
-const keyFor = value => value ? `${value.server}|${value.code}` : '';
-const resolveServer = ref => ref === 'local' ? localServer : ref;
+let presets = [],
+  editingPreset = null,
+  presetBusy = false;
+const shortcutLabel = (value) =>
+  value
+    ? value
+        .split('+')
+        .map(
+          (key) =>
+            ({
+              Control: 'Ctrl',
+              Shift: 'Maj',
+              Super: mac ? 'Cmd' : 'Windows',
+              Space: 'Espace',
+              Up: 'Haut',
+              Down: 'Bas',
+              Left: 'Gauche',
+              Right: 'Droite',
+            })[key] || key,
+        )
+        .join(' + ')
+    : 'Choisir un raccourci';
+const keyFor = (value) => (value ? `${value.server}|${value.code}` : '');
+const resolveServer = (ref) => (ref === 'local' ? localServer : ref);
 function referenceFor(url) {
-  const parsed = new URL(url), local = new URL(localServer);
-  return native && parsed.port === local.port && ['127.0.0.1','localhost','[::1]'].includes(parsed.hostname) ? 'local' : url;
+  const parsed = new URL(url),
+    local = new URL(localServer);
+  return native &&
+    parsed.port === local.port &&
+    ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
+    ? 'local'
+    : url;
 }
 function notify(message, error = false) {
-  const toast = $('#toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, error ? 6000 : 3500);
+  const toast = $('#toast');
+  toast.textContent = message;
+  toast.classList.toggle('error', error);
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(
+    () => {
+      toast.hidden = true;
+    },
+    error ? 6000 : 3500,
+  );
 }
 async function saveClient() {
   client = cleanClientState(client);
   try {
     if (native) await native.saveClient(client);
     else localStorage.setItem(storageKey, JSON.stringify(client));
-  } catch { notify('Impossible d’enregistrer les rooms sur cet appareil.', true); return false; }
+  } catch {
+    notify('Impossible d’enregistrer les rooms sur cet appareil.', true);
+    return false;
+  }
   return true;
 }
 function renderRooms() {
-  const select = $('#saved-room'); select.replaceChildren(new Option('Choisir une room', ''));
+  const select = $('#saved-room');
+  select.replaceChildren(new Option('Choisir une room', ''));
   for (const saved of client.rooms) select.add(new Option(saved.name, keyFor(saved)));
   select.value = keyFor(target);
   $('#connection-status').textContent = status;
@@ -46,28 +124,43 @@ function renderRooms() {
   $('#room-access').hidden = !connected || !room?.access?.canManage;
   $('#copy-code').textContent = target?.code ? `Code : ${target.code} · copier` : 'Copier le code';
   $('#members').hidden = !connected;
-  $('#members').textContent = room?.members.map(member => `${member.name}${member.desktop ? member.paused ? ' (en pause)' : '' : ' (web)'}`).join(', ') || '';
-  const list = $('#saved-rooms-list'); list.replaceChildren();
+  $('#members').textContent =
+    room?.members
+      .map(
+        (member) =>
+          `${member.name}${member.desktop ? (member.paused ? ' (en pause)' : '') : ' (web)'}`,
+      )
+      .join(', ') || '';
+  const list = $('#saved-rooms-list');
+  list.replaceChildren();
   if (!client.rooms.length) list.append(node('p', 'Aucune room enregistrée.', 'muted'));
   for (const saved of client.rooms) {
-    const row = node('div', undefined, 'saved-entry'), text = node('div');
-    text.append(node('strong', saved.name), node('small', `${saved.code} · ${saved.server === 'local' ? 'Ce PC' : saved.server}`));
+    const row = node('div', undefined, 'saved-entry'),
+      text = node('div');
+    text.append(
+      node('strong', saved.name),
+      node('small', `${saved.code} · ${saved.server === 'local' ? 'Ce PC' : saved.server}`),
+    );
     const remove = node('button', 'Retirer', 'text-button');
     remove.setAttribute('aria-label', `Retirer ${saved.name} des rooms enregistrées`);
     remove.addEventListener('click', async () => {
       if (keyFor(target) === keyFor(saved)) disconnect();
-      client.rooms = client.rooms.filter(entry => keyFor(entry) !== keyFor(saved));
+      client.rooms = client.rooms.filter((entry) => keyFor(entry) !== keyFor(saved));
       if (keyFor(client.active) === keyFor(saved)) client.active = null;
-      await saveClient(); renderRooms();
+      await saveClient();
+      renderRooms();
     });
-    row.append(text, remove); list.append(row);
+    row.append(text, remove);
+    list.append(row);
   }
   renderSend();
 }
 function renderSend() {
   const automatic = hasTimedMedia({ media: visual, audio });
-  $('#duration').hidden = automatic; $('#duration').disabled = automatic;
-  $('#duration-label').hidden = automatic; $('#automatic-duration').hidden = !automatic;
+  $('#duration').hidden = automatic;
+  $('#duration').disabled = automatic;
+  $('#duration-label').hidden = automatic;
+  $('#automatic-duration').hidden = !automatic;
   const hasContent = !!($('#caption').value.trim() || visual || audio);
   const busy = sending || importing || Date.now() < nextSend;
   $('#broadcast').disabled = !connected || !hasContent || busy;
@@ -79,29 +172,68 @@ function renderSend() {
   $('#attach-file').textContent = importing ? 'Import…' : 'Image / vidéo';
   $('#attach-audio').textContent = audio ? 'Remplacer l’audio' : 'Ajouter un audio';
   $('#audio-replacement').hidden = !(visual?.kind === 'video' && audio);
-  $('#send-status').textContent = !connected ? 'Sélectionnez une room pour envoyer.' : importing ? 'Import et vérification du fichier…' : Date.now() < nextSend ? 'Patientez quelques secondes avant le prochain envoi.' : automatic ? 'Lecture après téléchargement complet. Fichiers supprimés du serveur après 10 min.' : 'Le compteur démarre après chargement. Fichiers supprimés du serveur après 10 min.';
-  for (const button of document.querySelectorAll('[data-load-preset]')) button.disabled = !connected || importing || sending;
+  $('#send-status').textContent = !connected
+    ? 'Sélectionnez une room pour envoyer.'
+    : importing
+      ? 'Import et vérification du fichier…'
+      : Date.now() < nextSend
+        ? 'Patientez quelques secondes avant le prochain envoi.'
+        : automatic
+          ? 'Lecture après téléchargement complet. Fichiers supprimés du serveur après 10 min.'
+          : 'Le compteur démarre après chargement. Fichiers supprimés du serveur après 10 min.';
+  for (const button of document.querySelectorAll('[data-load-preset]'))
+    button.disabled = !connected || importing || sending;
 }
 function currentReaction() {
-  return { caption: $('#caption').value, sender: client.nickname, mediaId: visual?.id || null, audioId: audio?.id || null, media: visual, audio, duration: Number($('#duration').value), subtitles: cues, server: resolveServer(target?.server || 'local') };
+  return {
+    caption: $('#caption').value,
+    sender: client.nickname,
+    mediaId: visual?.id || null,
+    audioId: audio?.id || null,
+    media: visual,
+    audio,
+    duration: Number($('#duration').value),
+    subtitles: cues,
+    server: resolveServer(target?.server || 'local'),
+  };
 }
 function renderAttachments() {
   const list = $('#attachments');
-  for (const player of list.querySelectorAll('audio,video')) { player.pause(); player.removeAttribute('src'); player.load(); }
+  for (const player of list.querySelectorAll('audio,video')) {
+    player.pause();
+    player.removeAttribute('src');
+    player.load();
+  }
   list.replaceChildren();
   for (const asset of [visual, audio].filter(Boolean)) {
     const row = node('div', undefined, 'attachment');
     if (asset.kind !== 'audio') {
       const image = node(asset.kind === 'video' ? 'video' : 'img');
       image.src = new URL(asset.url, resolveServer(target.server)).href;
-      if (asset.kind === 'video') { image.muted = true; image.preload = 'metadata'; } else image.alt = asset.name;
+      if (asset.kind === 'video') {
+        image.muted = true;
+        image.preload = 'metadata';
+      } else image.alt = asset.name;
       row.append(image);
     }
     const info = node('div', undefined, 'attachment-info');
-    info.append(node('strong', asset.name), node('small', `${asset.kind === 'video' ? 'Vidéo' : asset.kind === 'audio' ? 'Audio' : 'Image'} · ${(asset.bytes / 1024 / 1024).toFixed(1)} Mo`));
-    const remove = node('button', 'Retirer', 'text-button'); remove.type = 'button'; remove.setAttribute('aria-label', `Retirer ${asset.name}`);
-    remove.addEventListener('click', () => { if (asset === visual) visual = null; else audio = null; renderAttachments(); });
-    row.append(info, remove); list.append(row);
+    info.append(
+      node('strong', asset.name),
+      node(
+        'small',
+        `${asset.kind === 'video' ? 'Vidéo' : asset.kind === 'audio' ? 'Audio' : 'Image'} · ${(asset.bytes / 1024 / 1024).toFixed(1)} Mo`,
+      ),
+    );
+    const remove = node('button', 'Retirer', 'text-button');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', `Retirer ${asset.name}`);
+    remove.addEventListener('click', () => {
+      if (asset === visual) visual = null;
+      else audio = null;
+      renderAttachments();
+    });
+    row.append(info, remove);
+    list.append(row);
   }
   renderSend();
 }
@@ -110,266 +242,626 @@ function renderLibrary() {
   for (const asset of library) $('#existing-media').add(new Option(asset.name, asset.id));
 }
 function renderSettings() {
-  if (!recordingShortcut) $('#dismiss-shortcut').textContent = shortcutLabel(settings.dismissShortcut);
+  if (!recordingShortcut)
+    $('#dismiss-shortcut').textContent = shortcutLabel(settings.dismissShortcut);
   $('#dismiss-shortcut').disabled = shortcutBusy;
   $('#disable-dismiss-shortcut').disabled = shortcutBusy || !settings.dismissShortcut;
   $('#auto-join').checked = client.autoJoin;
   $('#setting-paused').checked = settings.paused;
-  for (const key of ['volume','size','cooldown','position','display']) $(`#setting-${key}`).value = settings[key];
-  $('#volume-value').textContent = `${settings.volume} %`; $('#size-value').textContent = `${settings.size} %`; $('#cooldown-value').textContent = `${settings.cooldown} s`;
-  $('#pause-reception').textContent = settings.paused ? 'Reprendre la réception' : 'Mettre en pause';
+  for (const key of ['volume', 'size', 'cooldown', 'position', 'display'])
+    $(`#setting-${key}`).value = settings[key];
+  $('#volume-value').textContent = `${settings.volume} %`;
+  $('#size-value').textContent = `${settings.size} %`;
+  $('#cooldown-value').textContent = `${settings.cooldown} s`;
+  $('#pause-reception').textContent = settings.paused
+    ? 'Reprendre la réception'
+    : 'Mettre en pause';
 }
 function handleEvent(event) {
   if (!connected || !room) return;
-  if (event.type === 'members') { room.members = event.members; renderRooms(); }
-  if (event.type === 'library') { library = event.media; visual = library.find(item => item.id === visual?.id) || null; audio = library.find(item => item.id === audio?.id) || null; renderLibrary(); renderAttachments(); }
-  if (event.type === 'room-access') { room.access = event.access; renderRooms(); }
-  if (event.type === 'access-changed') { if (target) delete target.joinToken; notify('Les accès de la room ont changé. Rejoignez-la à nouveau.'); }
+  if (event.type === 'members') {
+    room.members = event.members;
+    renderRooms();
+  }
+  if (event.type === 'library') {
+    library = event.media;
+    visual = library.find((item) => item.id === visual?.id) || null;
+    audio = library.find((item) => item.id === audio?.id) || null;
+    renderLibrary();
+    renderAttachments();
+  }
+  if (event.type === 'room-access') {
+    room.access = event.access;
+    renderRooms();
+  }
+  if (event.type === 'access-changed') {
+    if (target) delete target.joinToken;
+    notify('Les accès de la room ont changé. Rejoignez-la à nouveau.');
+  }
   if (event.type === 'reaction') {
     $('#last-received').textContent = `Dernier envoi : ${event.sender.name}`;
     if (native && !settings.paused) {
       const now = Date.now() + connection.skew;
-      native.show({ ...event, server: resolveServer(target.server), delay: Math.max(0, event.startAt - now), age: Math.max(0, now - event.startAt) }).catch(error => notify(error.message, true));
+      native
+        .show({
+          ...event,
+          server: resolveServer(target.server),
+          delay: Math.max(0, event.startAt - now),
+          age: Math.max(0, now - event.startAt),
+        })
+        .catch((error) => notify(error.message, true));
     }
   }
 }
 function disconnect() {
-  epoch++; clearTimeout(retryTimer); connection?.close(); connection = null; room = null; target = null;
-  connected = false; connecting = false; library = []; visual = null; audio = null; cues = []; retries = 0;
-  native?.clear(); status = 'Aucune room sélectionnée.'; renderRooms(); renderAttachments(); renderLibrary(); renderSubtitles();
-  $('#password-dialog').close(); $('#access-dialog').close();
+  epoch++;
+  clearTimeout(retryTimer);
+  connection?.close();
+  connection = null;
+  room = null;
+  target = null;
+  connected = false;
+  connecting = false;
+  library = [];
+  visual = null;
+  audio = null;
+  cues = [];
+  retries = 0;
+  native?.clear();
+  status = 'Aucune room sélectionnée.';
+  renderRooms();
+  renderAttachments();
+  renderLibrary();
+  renderSubtitles();
+  $('#password-dialog').close();
+  $('#access-dialog').close();
 }
 function scheduleRetry(currentEpoch) {
   clearTimeout(retryTimer);
   if (currentEpoch !== epoch || !target) return;
-  status = 'Serveur indisponible. Reconnexion automatique…'; renderRooms();
-  retryTimer = setTimeout(() => attemptJoin(currentEpoch, false).catch(() => {}), Math.min(15000, 1000 * 2 ** retries++));
+  status = 'Serveur indisponible. Reconnexion automatique…';
+  renderRooms();
+  retryTimer = setTimeout(
+    () => attemptJoin(currentEpoch, false).catch(() => {}),
+    Math.min(15000, 1000 * 2 ** retries++),
+  );
 }
 async function attemptJoin(currentEpoch, create) {
   if (currentEpoch !== epoch || !target) return;
-  connecting = true; connection?.close();
-  const current = new Connection(resolveServer(target.server), event => { if (current === connection) handleEvent(event); }, () => {
-    if (current !== connection || currentEpoch !== epoch) return;
-    connected = false; room = null; native?.clear(); renderRooms();
-    if (!connecting) scheduleRetry(currentEpoch);
-  });
+  connecting = true;
+  connection?.close();
+  const current = new Connection(
+    resolveServer(target.server),
+    (event) => {
+      if (current === connection) handleEvent(event);
+    },
+    () => {
+      if (current !== connection || currentEpoch !== epoch) return;
+      connected = false;
+      room = null;
+      native?.clear();
+      renderRooms();
+      if (!connecting) scheduleRetry(currentEpoch);
+    },
+  );
   connection = current;
   try {
     await current.open();
     if (create) {
-      const health = await fetch(`${resolveServer(target.server)}/api/health`, { signal: AbortSignal.timeout(6000) });
-      if (!health.ok || !(await health.json()).features?.roomAccess) throw new Error('Mettez le serveur à jour en 0.4.0 pour créer une room avec ces accès.');
+      const health = await fetch(`${resolveServer(target.server)}/api/health`, {
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!health.ok || !(await health.json()).features?.roomAccess)
+        throw new Error('Mettez le serveur à jour en 0.4.0 pour créer une room avec ces accès.');
     }
     if (currentEpoch !== epoch) return;
-    const data = await current.request(create ? 'create' : 'join', { name: client.nickname, roomName: target.name, code: target.code, desktop: !!native, paused: settings.paused, isPrivate: target.isPrivate, password: target.password, joinToken: target.joinToken, ownerToken: target.ownerToken });
+    const data = await current.request(create ? 'create' : 'join', {
+      name: client.nickname,
+      roomName: target.name,
+      code: target.code,
+      desktop: !!native,
+      paused: settings.paused,
+      isPrivate: target.isPrivate,
+      password: target.password,
+      joinToken: target.joinToken,
+      ownerToken: target.ownerToken,
+    });
     if (currentEpoch !== epoch) return;
-    target = { code: data.code, name: data.name, server: target.server, joinToken: data.joinToken, ownerToken: data.ownerToken || target.ownerToken };
-    room = data; connected = true; connecting = false; retries = 0; clearTimeout(retryTimer);
+    target = {
+      code: data.code,
+      name: data.name,
+      server: target.server,
+      joinToken: data.joinToken,
+      ownerToken: data.ownerToken || target.ownerToken,
+    };
+    room = data;
+    connected = true;
+    connecting = false;
+    retries = 0;
+    clearTimeout(retryTimer);
     library = data.media;
-    visual = library.find(item => item.id === visual?.id) || null; audio = library.find(item => item.id === audio?.id) || null;
-    client.rooms = [target, ...client.rooms.filter(entry => keyFor(entry) !== keyFor(target))];
+    visual = library.find((item) => item.id === visual?.id) || null;
+    audio = library.find((item) => item.id === audio?.id) || null;
+    client.rooms = [target, ...client.rooms.filter((entry) => keyFor(entry) !== keyFor(target))];
     client.active = { code: target.code, server: target.server };
     const saved = await saveClient();
     status = saved ? 'Connecté · room enregistrée' : 'Connecté · enregistrement local impossible';
-    if (data.persistent !== true) notify('Ce serveur doit être mis à jour pour conserver ses rooms après un redémarrage.', true);
-    renderRooms(); renderLibrary(); renderAttachments();
+    if (data.persistent !== true)
+      notify(
+        'Ce serveur doit être mis à jour pour conserver ses rooms après un redémarrage.',
+        true,
+      );
+    renderRooms();
+    renderLibrary();
+    renderAttachments();
   } catch (error) {
     if (currentEpoch !== epoch) return;
-    connecting = false; connected = false; room = null; current.close();
+    connecting = false;
+    connected = false;
+    room = null;
+    current.close();
     const unavailable = /inaccessible|interrompue|déconnecté|ne répond pas/.test(error.message);
-    if (!create && unavailable && client.rooms.some(entry => keyFor(entry) === keyFor(target))) scheduleRetry(currentEpoch);
-    else { status = error.message; renderRooms(); }
+    if (!create && unavailable && client.rooms.some((entry) => keyFor(entry) === keyFor(target)))
+      scheduleRetry(currentEpoch);
+    else {
+      status = error.message;
+      renderRooms();
+    }
     if (error.code === 'ROOM_PASSWORD_REQUIRED' && !joining) showPasswordPrompt(error.message);
     throw error;
   }
 }
 async function chooseRoom(record, create = false) {
-  disconnect(); target = { ...record }; status = 'Connexion…'; renderRooms();
-  if (!create && client.rooms.some(entry => keyFor(entry) === keyFor(record))) { client.active = { code: record.code, server: record.server }; await saveClient(); }
+  disconnect();
+  target = { ...record };
+  status = 'Connexion…';
+  renderRooms();
+  if (!create && client.rooms.some((entry) => keyFor(entry) === keyFor(record))) {
+    client.active = { code: record.code, server: record.server };
+    await saveClient();
+  }
   return attemptJoin(epoch, create);
 }
 function setMode(value) {
   mode = value;
-  for (const entry of ['create','join','browse']) { $(`#mode-${entry}`).classList.toggle('selected', mode === entry); $(`#mode-${entry}`).setAttribute('aria-pressed', String(mode === entry)); }
-  $('#room-name-field').hidden = mode !== 'create'; $('#new-room-name').required = mode === 'create';
+  for (const entry of ['create', 'join', 'browse']) {
+    $(`#mode-${entry}`).classList.toggle('selected', mode === entry);
+    $(`#mode-${entry}`).setAttribute('aria-pressed', String(mode === entry));
+  }
+  $('#room-name-field').hidden = mode !== 'create';
+  $('#new-room-name').required = mode === 'create';
   $('#room-visibility-field').hidden = mode !== 'create';
-  $('#join-code-field').hidden = mode !== 'join'; $('#join-code').required = mode === 'join';
+  $('#join-code-field').hidden = mode !== 'join';
+  $('#join-code').required = mode === 'join';
   $('#room-directory').hidden = mode !== 'browse';
-  $('#room-password-label').hidden = mode === 'browse'; $('#room-password').hidden = mode === 'browse';
+  $('#room-password-label').hidden = mode === 'browse';
+  $('#room-password').hidden = mode === 'browse';
   $('#room-password').autocomplete = mode === 'create' ? 'new-password' : 'current-password';
   $('#room-submit').hidden = mode === 'browse';
-  $('#room-submit').textContent = mode === 'create' ? 'Créer et enregistrer' : 'Rejoindre et enregistrer';
+  $('#room-submit').textContent =
+    mode === 'create' ? 'Créer et enregistrer' : 'Rejoindre et enregistrer';
   $('#room-error').textContent = '';
   if (mode === 'browse') void loadDirectory();
 }
 function updateHostAddress() {
   let ownServer = false;
-  try { const server = normalizeServer($('#server-url').value.trim()); ownServer = server === localServer || addresses.includes(server); } catch { /* Wait for a complete URL. */ }
+  try {
+    const server = normalizeServer($('#server-url').value.trim());
+    ownServer = server === localServer || addresses.includes(server);
+  } catch {
+    /* Wait for a complete URL. */
+  }
   $('#host-address').hidden = !ownServer || !addresses.length;
 }
 $('#add-room').addEventListener('click', () => {
-  $('#nickname').value = client.nickname; $('#server-url').value = resolveServer(target?.server || (native ? 'local' : location.origin));
-  $('#host-address').textContent = addresses.length ? `Adresse de ce PC pour vos amis : ${addresses.join(' ou ')}` : '';
+  $('#nickname').value = client.nickname;
+  $('#server-url').value = resolveServer(target?.server || (native ? 'local' : location.origin));
+  $('#host-address').textContent = addresses.length
+    ? `Adresse de ce PC pour vos amis : ${addresses.join(' ou ')}`
+    : '';
   updateHostAddress();
-  $('#room-password').value = ''; $('#join-code').value = ''; $('#new-room-name').value = ''; $('#room-visibility').value = 'private';
-  $('#room-error').textContent = ''; setMode('create'); $('#room-dialog').showModal();
+  $('#room-password').value = '';
+  $('#join-code').value = '';
+  $('#new-room-name').value = '';
+  $('#room-visibility').value = 'private';
+  $('#room-error').textContent = '';
+  setMode('create');
+  $('#room-dialog').showModal();
 });
 $('#mode-create').addEventListener('click', () => setMode('create'));
 $('#mode-join').addEventListener('click', () => setMode('join'));
 $('#mode-browse').addEventListener('click', () => setMode('browse'));
 async function loadDirectory() {
-  directoryRequest?.abort(); const request = new AbortController(); directoryRequest = request;
+  directoryRequest?.abort();
+  const request = new AbortController();
+  directoryRequest = request;
   const timer = setTimeout(() => request.abort(), 6000);
-  $('#server-rooms').replaceChildren(); $('#directory-status').textContent = 'Chargement des rooms…'; $('#refresh-rooms').disabled = true;
+  $('#server-rooms').replaceChildren();
+  $('#directory-status').textContent = 'Chargement des rooms…';
+  $('#refresh-rooms').disabled = true;
   try {
     const server = normalizeServer($('#server-url').value.trim());
     const response = await fetch(`${server}/api/rooms`, { signal: request.signal });
-    if (response.status === 404) throw new Error('Ce serveur doit être mis à jour en 0.4.0 pour afficher ses rooms.');
+    if (response.status === 404)
+      throw new Error('Ce serveur doit être mis à jour en 0.4.0 pour afficher ses rooms.');
     if (!response.ok) throw new Error('Impossible de charger les rooms du serveur.');
-    const data = await response.json(); if (!Array.isArray(data.rooms)) throw new Error('Réponse du serveur invalide.');
+    const data = await response.json();
+    if (!Array.isArray(data.rooms)) throw new Error('Réponse du serveur invalide.');
     if (request !== directoryRequest) return;
-    $('#directory-status').textContent = data.rooms.length ? 'Les rooms privées se rejoignent par leur code.' : 'Aucune room publique sur ce serveur.';
+    $('#directory-status').textContent = data.rooms.length
+      ? 'Les rooms privées se rejoignent par leur code.'
+      : 'Aucune room publique sur ce serveur.';
     for (const entry of data.rooms.slice(0, 100)) {
       if (!entry || !/^[A-Z2-9]{8}$/.test(entry.code)) continue;
-      const row = node('div', undefined, 'directory-entry'), info = node('div');
-      info.append(node('strong', String(entry.name).slice(0, 40)), node('small', `${Number(entry.members) || 0} participant(s)${entry.passwordRequired ? ' · Mot de passe' : ''}`));
-      const join = node('button', 'Rejoindre'); join.type = 'button'; join.setAttribute('aria-label', `Rejoindre ${String(entry.name).slice(0, 40)}`);
-      join.addEventListener('click', () => { setMode('join'); $('#join-code').value = entry.code; $('#room-password').value = ''; if (entry.passwordRequired) $('#room-password').focus(); else $('#room-form').requestSubmit(); });
-      row.append(info, join); $('#server-rooms').append(row);
+      const row = node('div', undefined, 'directory-entry'),
+        info = node('div');
+      info.append(
+        node('strong', String(entry.name).slice(0, 40)),
+        node(
+          'small',
+          `${Number(entry.members) || 0} participant(s)${entry.passwordRequired ? ' · Mot de passe' : ''}`,
+        ),
+      );
+      const join = node('button', 'Rejoindre');
+      join.type = 'button';
+      join.setAttribute('aria-label', `Rejoindre ${String(entry.name).slice(0, 40)}`);
+      join.addEventListener('click', () => {
+        setMode('join');
+        $('#join-code').value = entry.code;
+        $('#room-password').value = '';
+        if (entry.passwordRequired) $('#room-password').focus();
+        else $('#room-form').requestSubmit();
+      });
+      row.append(info, join);
+      $('#server-rooms').append(row);
     }
-  } catch (error) { if (request === directoryRequest) $('#directory-status').textContent = error.name === 'AbortError' ? 'Serveur inaccessible. Réessayez.' : error.message; }
-  finally { clearTimeout(timer); if (request === directoryRequest) $('#refresh-rooms').disabled = false; }
+  } catch (error) {
+    if (request === directoryRequest)
+      $('#directory-status').textContent =
+        error.name === 'AbortError' ? 'Serveur inaccessible. Réessayez.' : error.message;
+  } finally {
+    clearTimeout(timer);
+    if (request === directoryRequest) $('#refresh-rooms').disabled = false;
+  }
 }
 $('#refresh-rooms').addEventListener('click', loadDirectory);
-$('#server-url').addEventListener('input', () => { updateHostAddress(); directoryRequest?.abort(); directoryRequest = null; $('#server-rooms').replaceChildren(); $('#directory-status').textContent = 'Cliquez sur Afficher les rooms pour ce serveur.'; $('#refresh-rooms').disabled = false; });
-$('#room-dialog').addEventListener('close', () => { directoryRequest?.abort(); $('#room-password').value = ''; });
-$('#room-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (joining || mode === 'browse') return;
-  if (client.rooms.length >= 30) { $('#room-error').textContent = 'Retirez une room enregistrée pour en ajouter une autre (30 maximum).'; return; }
-  joining = true; $('#room-submit').disabled = true; $('#room-error').textContent = '';
+$('#server-url').addEventListener('input', () => {
+  updateHostAddress();
+  directoryRequest?.abort();
+  directoryRequest = null;
+  $('#server-rooms').replaceChildren();
+  $('#directory-status').textContent = 'Cliquez sur Afficher les rooms pour ce serveur.';
+  $('#refresh-rooms').disabled = false;
+});
+$('#room-dialog').addEventListener('close', () => {
+  directoryRequest?.abort();
+  $('#room-password').value = '';
+});
+$('#room-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (joining || mode === 'browse') return;
+  if (client.rooms.length >= 30) {
+    $('#room-error').textContent =
+      'Retirez une room enregistrée pour en ajouter une autre (30 maximum).';
+    return;
+  }
+  joining = true;
+  $('#room-submit').disabled = true;
+  $('#room-error').textContent = '';
   try {
     const server = normalizeServer($('#server-url').value.trim());
-    if (location.protocol === 'https:' && server.startsWith('http:')) throw new Error('Utilisez une adresse HTTPS depuis cette page.');
+    if (location.protocol === 'https:' && server.startsWith('http:'))
+      throw new Error('Utilisez une adresse HTTPS depuis cette page.');
     client.nickname = $('#nickname').value.trim();
-    await chooseRoom({ name: $('#new-room-name').value.trim() || 'Ma room', code: $('#join-code').value.toUpperCase().replace(/[-\s]/g, ''), server: referenceFor(server), isPrivate: $('#room-visibility').value === 'private', password: $('#room-password').value }, mode === 'create');
+    await chooseRoom(
+      {
+        name: $('#new-room-name').value.trim() || 'Ma room',
+        code: $('#join-code').value.toUpperCase().replace(/[-\s]/g, ''),
+        server: referenceFor(server),
+        isPrivate: $('#room-visibility').value === 'private',
+        password: $('#room-password').value,
+      },
+      mode === 'create',
+    );
     $('#room-dialog').close();
-  } catch (error) { $('#room-error').textContent = error.message; }
-  finally { joining = false; $('#room-submit').disabled = false; }
+  } catch (error) {
+    $('#room-error').textContent = error.message;
+  } finally {
+    joining = false;
+    $('#room-submit').disabled = false;
+  }
 });
-$('#saved-room').addEventListener('change', async event => {
-  const saved = client.rooms.find(entry => keyFor(entry) === event.target.value);
-  if (saved) { try { await chooseRoom(saved); } catch { /* Status and automatic retry are shown in the room bar. */ } }
-  else { disconnect(); client.active = null; await saveClient(); }
+$('#saved-room').addEventListener('change', async (event) => {
+  const saved = client.rooms.find((entry) => keyFor(entry) === event.target.value);
+  if (saved) {
+    try {
+      await chooseRoom(saved);
+    } catch {
+      /* Status and automatic retry are shown in the room bar. */
+    }
+  } else {
+    disconnect();
+    client.active = null;
+    await saveClient();
+  }
 });
-$('#leave-room').addEventListener('click', async () => { disconnect(); client.active = null; await saveClient(); });
+$('#leave-room').addEventListener('click', async () => {
+  disconnect();
+  client.active = null;
+  await saveClient();
+});
 $('#copy-code').addEventListener('click', async () => {
   if (!target?.code) return;
-  try { await navigator.clipboard.writeText(target.code); notify('Code copié.'); } catch { notify(`Code : ${target.code}`); }
+  try {
+    await navigator.clipboard.writeText(target.code);
+    notify('Code copié.');
+  } catch {
+    notify(`Code : ${target.code}`);
+  }
 });
 function showPasswordPrompt(message = '') {
   if (!target || $('#room-dialog').open) return;
-  $('#password-room-name').textContent = target.name; $('#password-error').textContent = message; $('#saved-room-password').value = '';
+  $('#password-room-name').textContent = target.name;
+  $('#password-error').textContent = message;
+  $('#saved-room-password').value = '';
   if (!$('#password-dialog').open) $('#password-dialog').showModal();
 }
-$('#password-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (!target) return;
+$('#password-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!target) return;
   $('#password-submit').disabled = true;
   try {
-    target.password = $('#saved-room-password').value; delete target.joinToken;
-    await attemptJoin(epoch, false); $('#password-dialog').close();
-  } catch (error) { $('#password-error').textContent = error.message; }
-  finally { $('#password-submit').disabled = false; }
+    target.password = $('#saved-room-password').value;
+    delete target.joinToken;
+    await attemptJoin(epoch, false);
+    $('#password-dialog').close();
+  } catch (error) {
+    $('#password-error').textContent = error.message;
+  } finally {
+    $('#password-submit').disabled = false;
+  }
 });
-$('#password-dialog').addEventListener('close', () => { $('#saved-room-password').value = ''; if (target) delete target.password; });
+$('#password-dialog').addEventListener('close', () => {
+  $('#saved-room-password').value = '';
+  if (target) delete target.password;
+});
 $('#room-access').addEventListener('click', () => {
   if (!room?.access?.canManage) return;
   $('#access-visibility').value = room.access.isPrivate ? 'private' : 'public';
-  $('#access-password-action').value = 'keep'; $('#access-password').value = ''; $('#access-password').hidden = true; $('#access-password').required = false; $('#access-password-label').hidden = true;
-  $('#access-legacy-note').hidden = !room.access.unclaimed; $('#access-error').textContent = ''; $('#access-dialog').showModal();
+  $('#access-password-action').value = 'keep';
+  $('#access-password').value = '';
+  $('#access-password').hidden = true;
+  $('#access-password').required = false;
+  $('#access-password-label').hidden = true;
+  $('#access-legacy-note').hidden = !room.access.unclaimed;
+  $('#access-error').textContent = '';
+  $('#access-dialog').showModal();
 });
-$('#access-password-action').addEventListener('change', event => { const show = event.target.value === 'set'; $('#access-password').hidden = !show; $('#access-password').required = show; $('#access-password-label').hidden = !show; });
-$('#access-dialog').addEventListener('close', () => { $('#access-password').value = ''; });
-$('#access-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (!room?.access?.canManage) return;
-  const selected = target, current = room; $('#access-submit').disabled = true;
+$('#access-password-action').addEventListener('change', (event) => {
+  const show = event.target.value === 'set';
+  $('#access-password').hidden = !show;
+  $('#access-password').required = show;
+  $('#access-password-label').hidden = !show;
+});
+$('#access-dialog').addEventListener('close', () => {
+  $('#access-password').value = '';
+});
+$('#access-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!room?.access?.canManage) return;
+  const selected = target,
+    current = room;
+  $('#access-submit').disabled = true;
   try {
-    const data = await connection.request('room-settings', { isPrivate: $('#access-visibility').value === 'private', passwordAction: $('#access-password-action').value, password: $('#access-password').value });
+    const data = await connection.request('room-settings', {
+      isPrivate: $('#access-visibility').value === 'private',
+      passwordAction: $('#access-password-action').value,
+      password: $('#access-password').value,
+    });
     if (target !== selected || room !== current) return;
-    room.access = data.access; target.joinToken = data.joinToken; if (data.ownerToken) target.ownerToken = data.ownerToken;
-    client.rooms = client.rooms.map(entry => keyFor(entry) === keyFor(target) ? { ...target } : entry);
-    await saveClient(); renderRooms(); $('#access-dialog').close(); notify('Accès de la room enregistrés.');
-  } catch (error) { $('#access-error').textContent = error.message; }
-  finally { $('#access-submit').disabled = false; }
+    room.access = data.access;
+    target.joinToken = data.joinToken;
+    if (data.ownerToken) target.ownerToken = data.ownerToken;
+    client.rooms = client.rooms.map((entry) =>
+      keyFor(entry) === keyFor(target) ? { ...target } : entry,
+    );
+    await saveClient();
+    renderRooms();
+    $('#access-dialog').close();
+    notify('Accès de la room enregistrés.');
+  } catch (error) {
+    $('#access-error').textContent = error.message;
+  } finally {
+    $('#access-submit').disabled = false;
+  }
 });
 $('#caption').addEventListener('input', renderSend);
-$('#send-form').addEventListener('submit', async event => {
-  event.preventDefault(); if ($('#broadcast').disabled) return;
-  sending = true; renderSend();
-  try { await connection.request('broadcast', currentReaction()); nextSend = Date.now() + 3000; setTimeout(renderSend, 3050); notify('Envoyé.'); }
-  catch (error) { notify(error.message, true); }
-  finally { sending = false; renderSend(); }
+$('#send-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if ($('#broadcast').disabled) return;
+  sending = true;
+  renderSend();
+  try {
+    await connection.request('broadcast', currentReaction());
+    nextSend = Date.now() + 3000;
+    setTimeout(renderSend, 3050);
+    notify('Envoyé.');
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    sending = false;
+    renderSend();
+  }
 });
-function attach(asset) { if (asset.kind === 'audio') audio = asset; else visual = asset; renderAttachments(); }
+function attach(asset) {
+  if (asset.kind === 'audio') audio = asset;
+  else visual = asset;
+  renderAttachments();
+}
 async function uploadFiles(files) {
   if (importing) return;
-  if (!connected || !room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
-  importing = true; renderSend(); const currentEpoch = epoch, currentRoom = room, server = resolveServer(target.server);
+  if (!connected || !room) {
+    notify('Sélectionnez une room avant d’ajouter un fichier.');
+    return;
+  }
+  importing = true;
+  renderSend();
+  const currentEpoch = epoch,
+    currentRoom = room,
+    server = resolveServer(target.server);
   try {
     for (const file of files.slice(0, 2)) {
       if (file.size > LIMITS.uploadBytes) throw new Error(`${file.name} dépasse 1 Go.`);
       let response;
       for (let attempt = 0; attempt < 3; attempt++) {
         if (currentEpoch !== epoch || room !== currentRoom) return;
-        response = await fetch(`${server}/api/media`, { method:'POST', headers:{ Authorization:`Bearer ${currentRoom.token}`, 'Content-Type':'application/octet-stream', 'X-Filename':encodeURIComponent(file.name) }, body:file, signal:AbortSignal.timeout(LIMITS.transferTimeoutMs) });
+        response = await fetch(`${server}/api/media`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${currentRoom.token}`,
+            'Content-Type': 'application/octet-stream',
+            'X-Filename': encodeURIComponent(file.name),
+          },
+          body: file,
+          signal: AbortSignal.timeout(LIMITS.transferTimeoutMs),
+        });
         if (response.status !== 429 || attempt === 2) break;
-        await response.arrayBuffer(); await new Promise(resolve => setTimeout(resolve, 1000));
+        await response.arrayBuffer();
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Import impossible.');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Import impossible.');
       if (currentEpoch !== epoch || room !== currentRoom) return;
-      if (!library.some(asset => asset.id === data.id)) library.push(data);
-      attach(data); renderLibrary();
+      if (!library.some((asset) => asset.id === data.id)) library.push(data);
+      attach(data);
+      renderLibrary();
     }
-  } catch (error) { notify(error.name === 'TimeoutError' ? 'L’import a pris trop de temps.' : error.message, true); }
-  finally { importing = false; renderSend(); }
+  } catch (error) {
+    notify(error.name === 'TimeoutError' ? 'L’import a pris trop de temps.' : error.message, true);
+  } finally {
+    importing = false;
+    renderSend();
+  }
 }
 $('#attach-file').addEventListener('click', () => {
-  if (!connected) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
+  if (!connected) {
+    notify('Sélectionnez une room avant d’ajouter un fichier.');
+    return;
+  }
   $('#file-input').click();
 });
-$('#file-input').addEventListener('change', event => { uploadFiles([...event.target.files]); event.target.value = ''; });
-$('#attach-audio').addEventListener('click', () => { if (!connected) { notify('Sélectionnez une room avant d’ajouter un audio.'); return; } $('#audio-input').click(); });
-$('#audio-input').addEventListener('change', event => { uploadFiles([...event.target.files]); event.target.value = ''; });
-for (const type of ['dragenter','dragover']) $('#drop-zone').addEventListener(type, event => { event.preventDefault(); $('#drop-zone').classList.add('dragging'); });
+$('#file-input').addEventListener('change', (event) => {
+  uploadFiles([...event.target.files]);
+  event.target.value = '';
+});
+$('#attach-audio').addEventListener('click', () => {
+  if (!connected) {
+    notify('Sélectionnez une room avant d’ajouter un audio.');
+    return;
+  }
+  $('#audio-input').click();
+});
+$('#audio-input').addEventListener('change', (event) => {
+  uploadFiles([...event.target.files]);
+  event.target.value = '';
+});
+for (const type of ['dragenter', 'dragover'])
+  $('#drop-zone').addEventListener(type, (event) => {
+    event.preventDefault();
+    $('#drop-zone').classList.add('dragging');
+  });
 $('#drop-zone').addEventListener('dragleave', () => $('#drop-zone').classList.remove('dragging'));
-$('#drop-zone').addEventListener('drop', event => { event.preventDefault(); $('#drop-zone').classList.remove('dragging'); uploadFiles([...event.dataTransfer.files]); });
-$('#existing-media').addEventListener('change', event => { const asset = library.find(item => item.id === event.target.value); if (asset) attach(asset); event.target.value = ''; });
-function renderSubtitles() { $('#subtitle-label').textContent = cues.length ? `${cues.length} sous-titre(s)` : ''; $('#clear-subtitles').hidden = !cues.length; }
+$('#drop-zone').addEventListener('drop', (event) => {
+  event.preventDefault();
+  $('#drop-zone').classList.remove('dragging');
+  uploadFiles([...event.dataTransfer.files]);
+});
+$('#existing-media').addEventListener('change', (event) => {
+  const asset = library.find((item) => item.id === event.target.value);
+  if (asset) attach(asset);
+  event.target.value = '';
+});
+function renderSubtitles() {
+  $('#subtitle-label').textContent = cues.length ? `${cues.length} sous-titre(s)` : '';
+  $('#clear-subtitles').hidden = !cues.length;
+}
 $('#subtitle-button').addEventListener('click', () => $('#subtitle-input').click());
-$('#subtitle-input').addEventListener('change', async event => {
+$('#subtitle-input').addEventListener('change', async (event) => {
   try {
-    const file = event.target.files[0]; if (!file) return;
+    const file = event.target.files[0];
+    if (!file) return;
     if (file.size > 32000) throw new Error('Le fichier SRT dépasse 32 Ko.');
-    const parsed = parseSubtitles(await file.text()); if (!parsed.length) throw new Error('Aucun sous-titre valide dans ce fichier.');
-    cues = parsed; renderSubtitles();
-  } catch (error) { notify(error.message, true); } finally { event.target.value = ''; }
+    const parsed = parseSubtitles(await file.text());
+    if (!parsed.length) throw new Error('Aucun sous-titre valide dans ce fichier.');
+    cues = parsed;
+    renderSubtitles();
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    event.target.value = '';
+  }
 });
-$('#clear-subtitles').addEventListener('click', () => { cues = []; renderSubtitles(); });
+$('#clear-subtitles').addEventListener('click', () => {
+  cues = [];
+  renderSubtitles();
+});
 $('#preview-play').addEventListener('click', () => {
-  $('#preview-dialog').showModal(); preview?.destroy(); $('#preview-loading').hidden = false;
-  preview = mountReaction($('#large-preview'), currentReaction(), { volume:settings.volume, autoplay:true, onReady:() => { $('#preview-loading').hidden = true; }, onDone:() => $('#preview-dialog').close(), onError:() => { $('#preview-dialog').close(); notify('Impossible de lire ce fichier.', true); } });
+  $('#preview-dialog').showModal();
+  preview?.destroy();
+  $('#preview-loading').hidden = false;
+  preview = mountReaction($('#large-preview'), currentReaction(), {
+    volume: settings.volume,
+    autoplay: true,
+    onReady: () => {
+      $('#preview-loading').hidden = true;
+    },
+    onDone: () => $('#preview-dialog').close(),
+    onError: () => {
+      $('#preview-dialog').close();
+      notify('Impossible de lire ce fichier.', true);
+    },
+  });
 });
-$('#preview-dialog').addEventListener('close', () => { preview?.destroy(); preview = null; });
-document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.close).close()));
+$('#preview-dialog').addEventListener('close', () => {
+  preview?.destroy();
+  preview = null;
+});
+document
+  .querySelectorAll('[data-close]')
+  .forEach((button) =>
+    button.addEventListener('click', () => document.getElementById(button.dataset.close).close()),
+  );
 for (const dialog of document.querySelectorAll('dialog')) {
   let outsideDown = false;
-  const outside = event => { const r = dialog.getBoundingClientRect(); return event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom; };
-  dialog.addEventListener('pointerdown', event => { outsideDown = event.target === dialog && outside(event); });
-  dialog.addEventListener('click', event => { if (outsideDown && event.target === dialog && outside(event)) dialog.close(); outsideDown = false; });
+  const outside = (event) => {
+    const r = dialog.getBoundingClientRect();
+    return (
+      event.clientX < r.left ||
+      event.clientX > r.right ||
+      event.clientY < r.top ||
+      event.clientY > r.bottom
+    );
+  };
+  dialog.addEventListener('pointerdown', (event) => {
+    outsideDown = event.target === dialog && outside(event);
+  });
+  dialog.addEventListener('click', (event) => {
+    if (outsideDown && event.target === dialog && outside(event)) dialog.close();
+    outsideDown = false;
+  });
 }
-$('#open-settings').addEventListener('click', () => { renderSettings(); renderRooms(); $('#settings-dialog').showModal(); });
-$('#auto-join').addEventListener('change', async event => { client.autoJoin = event.target.checked; await saveClient(); });
+$('#open-settings').addEventListener('click', () => {
+  renderSettings();
+  renderRooms();
+  $('#settings-dialog').showModal();
+});
+$('#auto-join').addEventListener('change', async (event) => {
+  client.autoJoin = event.target.checked;
+  await saveClient();
+});
 async function stopShortcutCapture() {
-  recordingShortcut = false; renderSettings();
+  recordingShortcut = false;
+  renderSettings();
   if (native) await native.recordShortcut(false);
 }
 async function saveDismissShortcut(value) {
@@ -377,126 +869,306 @@ async function saveDismissShortcut(value) {
   try {
     await stopShortcutCapture();
     settings = await native.saveDismissShortcut(value);
-    $('#shortcut-hint').textContent = value ? 'Raccourci enregistré. Arrête uniquement le contenu en cours sur votre écran.' : 'Raccourci désactivé.';
-  } catch (error) { $('#shortcut-hint').textContent = error.message; }
-  finally { shortcutBusy = false; renderSettings(); }
+    $('#shortcut-hint').textContent = value
+      ? 'Raccourci enregistré. Arrête uniquement le contenu en cours sur votre écran.'
+      : 'Raccourci désactivé.';
+  } catch (error) {
+    $('#shortcut-hint').textContent = error.message;
+  } finally {
+    shortcutBusy = false;
+    renderSettings();
+  }
 }
 $('#dismiss-shortcut').addEventListener('click', async () => {
-  if (recordingShortcut) { await stopShortcutCapture(); return; }
+  if (recordingShortcut) {
+    await stopShortcutCapture();
+    return;
+  }
   try {
-    await native.recordShortcut(true); recordingShortcut = true;
+    await native.recordShortcut(true);
+    recordingShortcut = true;
     $('#dismiss-shortcut').textContent = 'Appuyez sur les touches…';
-    $('#shortcut-hint').textContent = `Ctrl, Alt ou ${mac ? 'Cmd' : 'Windows'} + une touche, ou F1 à F24. Échap pour annuler.`;
-  } catch (error) { $('#shortcut-hint').textContent = error.message; }
+    $('#shortcut-hint').textContent =
+      `Ctrl, Alt ou ${mac ? 'Cmd' : 'Windows'} + une touche, ou F1 à F24. Échap pour annuler.`;
+  } catch (error) {
+    $('#shortcut-hint').textContent = error.message;
+  }
 });
 $('#disable-dismiss-shortcut').addEventListener('click', () => saveDismissShortcut(''));
-$('#dismiss-shortcut').addEventListener('blur', () => { if (recordingShortcut) void stopShortcutCapture(); });
-$('#settings-dialog').addEventListener('close', () => { if (recordingShortcut) void stopShortcutCapture(); });
-window.addEventListener('blur', () => { if (recordingShortcut) void stopShortcutCapture(); });
-document.addEventListener('keydown', event => {
-  if (!recordingShortcut) return;
-  event.preventDefault(); event.stopPropagation();
-  if (event.key === 'Escape' || event.key === 'Tab') { void stopShortcutCapture(); return; }
-  if (event.repeat || ['Control','Alt','Shift','Meta'].includes(event.key)) return;
-  const aliases = { ' ':'Space', ArrowUp:'Up', ArrowDown:'Down', ArrowLeft:'Left', ArrowRight:'Right' };
-  const key = aliases[event.key] || (event.key.length === 1 ? event.key.toUpperCase() : event.key);
-  const shortcut = [event.ctrlKey && 'Control', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Super', key].filter(Boolean).join('+');
-  if (!validDismissShortcut(shortcut)) { $('#shortcut-hint').textContent = 'Combinaison invalide. Ctrl + Maj + F8 reste réservé à la pause.'; return; }
-  void saveDismissShortcut(shortcut);
-}, true);
+$('#dismiss-shortcut').addEventListener('blur', () => {
+  if (recordingShortcut) void stopShortcutCapture();
+});
+$('#settings-dialog').addEventListener('close', () => {
+  if (recordingShortcut) void stopShortcutCapture();
+});
+window.addEventListener('blur', () => {
+  if (recordingShortcut) void stopShortcutCapture();
+});
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (!recordingShortcut) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      void stopShortcutCapture();
+      return;
+    }
+    if (event.repeat || ['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
+    const aliases = {
+      ' ': 'Space',
+      ArrowUp: 'Up',
+      ArrowDown: 'Down',
+      ArrowLeft: 'Left',
+      ArrowRight: 'Right',
+    };
+    const key =
+      aliases[event.key] || (event.key.length === 1 ? event.key.toUpperCase() : event.key);
+    const shortcut = [
+      event.ctrlKey && 'Control',
+      event.altKey && 'Alt',
+      event.shiftKey && 'Shift',
+      event.metaKey && 'Super',
+      key,
+    ]
+      .filter(Boolean)
+      .join('+');
+    if (!validDismissShortcut(shortcut)) {
+      $('#shortcut-hint').textContent =
+        'Combinaison invalide. Ctrl + Maj + F8 reste réservé à la pause.';
+      return;
+    }
+    void saveDismissShortcut(shortcut);
+  },
+  true,
+);
 async function updateSettings(value) {
-  const pauseChanged = settings.paused !== value.paused; settings = cleanSettings(value); renderSettings();
-  if (native) try { await native.saveSettings(settings); } catch { notify('Impossible d’enregistrer les réglages.', true); }
-  if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {});
+  const pauseChanged = settings.paused !== value.paused;
+  settings = cleanSettings(value);
+  renderSettings();
+  if (native)
+    try {
+      await native.saveSettings(settings);
+    } catch {
+      notify('Impossible d’enregistrer les réglages.', true);
+    }
+  if (pauseChanged && connected)
+    connection.request('status', { paused: settings.paused }).catch(() => {});
 }
-$('#pause-reception').addEventListener('click', () => updateSettings({ ...settings, paused:!settings.paused }));
-for (const [id, key] of [['setting-paused','paused'],['setting-volume','volume'],['setting-size','size'],['setting-cooldown','cooldown'],['setting-position','position'],['setting-display','display']]) {
-  $(`#${id}`).addEventListener('input', event => { const input = event.target; updateSettings({ ...settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
+$('#pause-reception').addEventListener('click', () =>
+  updateSettings({ ...settings, paused: !settings.paused }),
+);
+for (const [id, key] of [
+  ['setting-paused', 'paused'],
+  ['setting-volume', 'volume'],
+  ['setting-size', 'size'],
+  ['setting-cooldown', 'cooldown'],
+  ['setting-position', 'position'],
+  ['setting-display', 'display'],
+]) {
+  $(`#${id}`).addEventListener('input', (event) => {
+    const input = event.target;
+    updateSettings({
+      ...settings,
+      [key]:
+        input.type === 'checkbox'
+          ? input.checked
+          : input.type === 'range'
+            ? Number(input.value)
+            : input.value,
+    });
+  });
 }
-$('#test-overlay').addEventListener('click', async () => { if (native) { const result = await native.test(); if (!result.shown) notify('Reprenez la réception pour tester l’overlay.'); } });
+$('#test-overlay').addEventListener('click', async () => {
+  if (native) {
+    const result = await native.test();
+    if (!result.shown) notify('Reprenez la réception pour tester l’overlay.');
+  }
+});
 function showMessages(saved) {
-  $('#send-form').hidden = saved; $('#presets-panel').hidden = !saved;
-  $('#show-composer').setAttribute('aria-pressed', String(!saved)); $('#show-presets').setAttribute('aria-pressed', String(saved));
+  $('#send-form').hidden = saved;
+  $('#presets-panel').hidden = !saved;
+  $('#show-composer').setAttribute('aria-pressed', String(!saved));
+  $('#show-presets').setAttribute('aria-pressed', String(saved));
   if (saved) renderPresets();
 }
 function renderPresets() {
   $('#preset-count').textContent = String(presets.length);
-  const list = $('#presets-list'); list.replaceChildren();
+  const list = $('#presets-list');
+  list.replaceChildren();
   const query = $('#preset-search').value.toLocaleLowerCase('fr');
-  const filtered = presets.filter(value => value.name.toLocaleLowerCase('fr').includes(query));
-  if (!filtered.length) list.append(node('p', presets.length ? 'Aucun message trouvé.' : 'Composez un message, puis cliquez sur Enregistrer.', 'muted note'));
+  const filtered = presets.filter((value) => value.name.toLocaleLowerCase('fr').includes(query));
+  if (!filtered.length)
+    list.append(
+      node(
+        'p',
+        presets.length
+          ? 'Aucun message trouvé.'
+          : 'Composez un message, puis cliquez sur Enregistrer.',
+        'muted note',
+      ),
+    );
   for (const value of filtered) {
-    const row = node('div', undefined, 'preset-entry'), info = node('div', undefined, 'preset-info'), actions = node('div', undefined, 'preset-actions');
-    const kinds = [value.media?.kind === 'video' ? 'Vidéo' : value.media ? 'Image' : null, value.audio ? 'Audio' : null, value.caption ? 'Texte' : null].filter(Boolean).join(' + ');
+    const row = node('div', undefined, 'preset-entry'),
+      info = node('div', undefined, 'preset-info'),
+      actions = node('div', undefined, 'preset-actions');
+    const kinds = [
+      value.media?.kind === 'video' ? 'Vidéo' : value.media ? 'Image' : null,
+      value.audio ? 'Audio' : null,
+      value.caption ? 'Texte' : null,
+    ]
+      .filter(Boolean)
+      .join(' + ');
     info.append(node('strong', value.name), node('small', kinds, 'muted'));
     if (value.caption) info.append(node('p', value.caption));
-    const load = node('button','Charger'); load.type = 'button'; load.dataset.loadPreset = value.id;
+    const load = node('button', 'Charger');
+    load.type = 'button';
+    load.dataset.loadPreset = value.id;
     load.addEventListener('click', () => loadSavedMessage(value));
-    const rename = node('button','Renommer','text-button'); rename.type = 'button';
+    const rename = node('button', 'Renommer', 'text-button');
+    rename.type = 'button';
     rename.addEventListener('click', () => openPresetDialog(value));
-    const remove = node('button','Supprimer','text-button'); remove.type = 'button';
+    const remove = node('button', 'Supprimer', 'text-button');
+    remove.type = 'button';
     remove.addEventListener('click', async () => {
       remove.disabled = true;
-      try { await native.removePreset(value.id); presets = presets.filter(item => item.id !== value.id); renderPresets(); }
-      catch (error) { notify(error.message,true); remove.disabled = false; }
+      try {
+        await native.removePreset(value.id);
+        presets = presets.filter((item) => item.id !== value.id);
+        renderPresets();
+      } catch (error) {
+        notify(error.message, true);
+        remove.disabled = false;
+      }
     });
-    actions.append(load,rename,remove); row.append(info,actions); list.append(row);
+    actions.append(load, rename, remove);
+    row.append(info, actions);
+    list.append(row);
   }
   renderSend();
 }
 async function loadSavedMessage(value) {
   if (!connected || importing || sending) return;
-  const currentEpoch = epoch, currentRoom = room, server = resolveServer(target.server);
-  importing = true; renderSend(); notify('Chargement du message et de ses fichiers…');
+  const currentEpoch = epoch,
+    currentRoom = room,
+    server = resolveServer(target.server);
+  importing = true;
+  renderSend();
+  notify('Chargement du message et de ses fichiers…');
   try {
     const data = await native.loadPreset(value.id, server, currentRoom.token);
     if (epoch !== currentEpoch || room !== currentRoom) return;
-    visual = data.media; audio = data.audio; cues = data.subtitles;
-    $('#caption').value = data.caption; $('#duration').value = String(data.duration);
-    for (const asset of [visual,audio].filter(Boolean)) if (!library.some(item => item.id === asset.id)) library.push(asset);
-    renderLibrary(); renderAttachments(); renderSubtitles(); showMessages(false); notify(`« ${value.name} » prêt à envoyer.`);
-  } catch (error) { notify(error.message,true); }
-  finally { importing = false; renderSend(); }
+    visual = data.media;
+    audio = data.audio;
+    cues = data.subtitles;
+    $('#caption').value = data.caption;
+    $('#duration').value = String(data.duration);
+    for (const asset of [visual, audio].filter(Boolean))
+      if (!library.some((item) => item.id === asset.id)) library.push(asset);
+    renderLibrary();
+    renderAttachments();
+    renderSubtitles();
+    showMessages(false);
+    notify(`« ${value.name} » prêt à envoyer.`);
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    importing = false;
+    renderSend();
+  }
 }
 function openPresetDialog(value = null) {
   editingPreset = value?.id || null;
   $('#preset-dialog-title').textContent = value ? 'Renommer le message' : 'Enregistrer le message';
-  $('#preset-name').value = value?.name || $('#caption').value.trim().slice(0,60) || visual?.name || audio?.name || '';
-  $('#preset-error').textContent = ''; $('#preset-dialog').showModal(); $('#preset-name').focus();
+  $('#preset-name').value =
+    value?.name || $('#caption').value.trim().slice(0, 60) || visual?.name || audio?.name || '';
+  $('#preset-error').textContent = '';
+  $('#preset-dialog').showModal();
+  $('#preset-name').focus();
 }
 $('#show-composer').addEventListener('click', () => showMessages(false));
 $('#show-presets').addEventListener('click', () => showMessages(true));
-$('#preset-search').addEventListener('input',renderPresets);
-$('#new-message').addEventListener('click', () => { visual = null; audio = null; cues = []; $('#caption').value = ''; renderAttachments(); renderSubtitles(); showMessages(false); $('#caption').focus(); });
+$('#preset-search').addEventListener('input', renderPresets);
+$('#new-message').addEventListener('click', () => {
+  visual = null;
+  audio = null;
+  cues = [];
+  $('#caption').value = '';
+  renderAttachments();
+  renderSubtitles();
+  showMessages(false);
+  $('#caption').focus();
+});
 $('#save-preset').addEventListener('click', () => openPresetDialog());
-$('#preset-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (presetBusy) return;
-  const id = editingPreset, name = $('#preset-name').value, reaction = currentReaction();
-  presetBusy = true; $('#preset-submit').disabled = true; $('#preset-submit').textContent = 'Enregistrement…'; $('#preset-error').textContent = ''; renderSend();
+$('#preset-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (presetBusy) return;
+  const id = editingPreset,
+    name = $('#preset-name').value,
+    reaction = currentReaction();
+  presetBusy = true;
+  $('#preset-submit').disabled = true;
+  $('#preset-submit').textContent = 'Enregistrement…';
+  $('#preset-error').textContent = '';
+  renderSend();
   try {
-    if (id) await native.renamePreset(id,name); else await native.savePreset({ name,reaction });
-    presets = await native.listPresets(); renderPresets(); $('#preset-dialog').close(); notify('Message enregistré sur cet appareil.');
-  } catch (error) { $('#preset-error').textContent = error.message; if (!$('#preset-dialog').open) notify(error.message,true); }
-  finally { presetBusy = false; $('#preset-submit').disabled = false; $('#preset-submit').textContent = 'Enregistrer'; renderSend(); }
+    if (id) await native.renamePreset(id, name);
+    else await native.savePreset({ name, reaction });
+    presets = await native.listPresets();
+    renderPresets();
+    $('#preset-dialog').close();
+    notify('Message enregistré sur cet appareil.');
+  } catch (error) {
+    $('#preset-error').textContent = error.message;
+    if (!$('#preset-dialog').open) notify(error.message, true);
+  } finally {
+    presetBusy = false;
+    $('#preset-submit').disabled = false;
+    $('#preset-submit').textContent = 'Enregistrer';
+    renderSend();
+  }
 });
 async function init() {
   if (native) {
-    const info = await native.info(); settings = info.settings; localServer = info.server; addresses = info.addresses;
+    const info = await native.info();
+    settings = info.settings;
+    localServer = info.server;
+    addresses = info.addresses;
     mac = info.platform === 'darwin';
     if (mac) $('#pause-shortcut-note').textContent = 'Pause rapide : Cmd + Maj + F8';
     if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
     client = cleanClientState(info.clientState || client);
-    for (const display of info.displays) $('#setting-display').add(new Option(display.label, display.id));
-    $('#pause-reception').hidden = false; $('#device-note').textContent = 'Fermer la fenêtre conserve la réception en arrière-plan.';
-    native.onSettings(value => { const pauseChanged = settings.paused !== value.paused; settings = value; renderSettings(); if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {}); });
-    native.onError(message => notify(message, true));
-    presets = await native.listPresets(); renderPresets();
+    for (const display of info.displays)
+      $('#setting-display').add(new Option(display.label, display.id));
+    $('#pause-reception').hidden = false;
+    $('#device-note').textContent = 'Fermer la fenêtre conserve la réception en arrière-plan.';
+    native.onSettings((value) => {
+      const pauseChanged = settings.paused !== value.paused;
+      settings = value;
+      renderSettings();
+      if (pauseChanged && connected)
+        connection.request('status', { paused: settings.paused }).catch(() => {});
+    });
+    native.onError((message) => notify(message, true));
+    presets = await native.listPresets();
+    renderPresets();
   } else $('#reception-settings').hidden = true;
-  renderRooms(); renderSettings(); renderLibrary();
+  renderRooms();
+  renderSettings();
+  renderLibrary();
   if (client.autoJoin && client.active) {
-    const saved = client.rooms.find(entry => keyFor(entry) === keyFor(client.active));
-    if (saved) try { await chooseRoom(saved); } catch { /* Saved room stays available while the server is offline. */ }
+    const saved = client.rooms.find((entry) => keyFor(entry) === keyFor(client.active));
+    if (saved)
+      try {
+        await chooseRoom(saved);
+      } catch {
+        /* Saved room stays available while the server is offline. */
+      }
   }
   document.body.dataset.ready = 'true';
 }
-init().catch(error => { status = 'Initialisation impossible.'; renderRooms(); notify(error.message, true); });
+init().catch((error) => {
+  status = 'Initialisation impossible.';
+  renderRooms();
+  notify(error.message, true);
+});

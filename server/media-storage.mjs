@@ -10,31 +10,56 @@ import { detectMedia } from './media.mjs';
 
 export const mediaError = (message, status = 400) => Object.assign(new Error(message), { status });
 export class MediaStorage {
-  constructor() { this.pending = new Set(); }
-  async start() { this.directory = await mkdtemp(path.join(os.tmpdir(), 'memeroom-media-')); }
+  constructor() {
+    this.pending = new Set();
+  }
+  async start() {
+    this.directory = await mkdtemp(path.join(os.tmpdir(), 'memeroom-media-'));
+  }
   async receive(request) {
     const file = path.join(this.directory, randomUUID());
-    let bytes = 0, header = Buffer.alloc(0);
-    const limit = new Transform({ transform(chunk, _encoding, callback) {
-      bytes += chunk.length;
-      if (bytes > LIMITS.uploadBytes) { callback(mediaError('Le fichier dépasse 1 Go.', 413)); return; }
-      if (header.length < 4096) header = Buffer.concat([header, chunk.subarray(0, 4096 - header.length)]);
-      callback(null, chunk);
-    } });
+    let bytes = 0,
+      header = Buffer.alloc(0);
+    const limit = new Transform({
+      transform(chunk, _encoding, callback) {
+        bytes += chunk.length;
+        if (bytes > LIMITS.uploadBytes) {
+          callback(mediaError('Le fichier dépasse 1 Go.', 413));
+          return;
+        }
+        if (header.length < 4096)
+          header = Buffer.concat([header, chunk.subarray(0, 4096 - header.length)]);
+        callback(null, chunk);
+      },
+    });
     try {
-      await pipeline(request, limit, createWriteStream(file, { flags:'wx', mode:0o600 }), { signal:AbortSignal.timeout(LIMITS.transferTimeoutMs) });
+      await pipeline(request, limit, createWriteStream(file, { flags: 'wx', mode: 0o600 }), {
+        signal: AbortSignal.timeout(LIMITS.transferTimeoutMs),
+      });
       const format = detectMedia(header);
-      if (!format) throw mediaError('Format refusé. Utilisez PNG, JPEG, GIF, WebP, MP4, WebM, MP3, WAV ou OGG.', 415);
+      if (!format)
+        throw mediaError(
+          'Format refusé. Utilisez PNG, JPEG, GIF, WebP, MP4, WebM, MP3, WAV ou OGG.',
+          415,
+        );
       return { file, bytes, ...format };
-    } catch (error) { await rm(file, { force:true }); throw error; }
+    } catch (error) {
+      await rm(file, { force: true });
+      throw error;
+    }
   }
   remove(asset) {
     if (!asset?.file) return;
-    const removing = rm(asset.file, { force:true, maxRetries:3, retryDelay:100 }).catch(error => { console.error('Suppression du média impossible :', error.code); }).finally(() => this.pending.delete(removing));
+    const removing = rm(asset.file, { force: true, maxRetries: 3, retryDelay: 100 })
+      .catch((error) => {
+        console.error('Suppression du média impossible :', error.code);
+      })
+      .finally(() => this.pending.delete(removing));
     this.pending.add(removing);
   }
   async stop() {
     await Promise.allSettled([...this.pending]);
-    if (this.directory) await rm(this.directory, { recursive:true, force:true, maxRetries:3, retryDelay:100 });
+    if (this.directory)
+      await rm(this.directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
 }

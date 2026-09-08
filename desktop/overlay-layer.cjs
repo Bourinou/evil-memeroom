@@ -3,9 +3,15 @@
 function createOverlayLayer(window, platform = process.platform) {
   let timer;
   const alive = () => !window.isDestroyed();
-  function stop() { clearInterval(timer); timer = undefined; }
+  function stop() {
+    clearInterval(timer);
+    timer = undefined;
+  }
   function refresh() {
-    if (!alive() || !window.isVisible()) { stop(); return; }
+    if (!alive() || !window.isVisible()) {
+      stop();
+      return;
+    }
     if (platform === 'linux') window.setAlwaysOnTop(true);
     else window.setAlwaysOnTop(true, 'screen-saver');
     window.moveTop();
@@ -22,9 +28,15 @@ function createOverlayLayer(window, platform = process.platform) {
       if (!alive()) return;
       window.showInactive();
       refresh();
-      if (!timer) { timer = setInterval(refresh, 500); timer.unref(); }
+      if (!timer) {
+        timer = setInterval(refresh, 500);
+        timer.unref();
+      }
     },
-    hide() { stop(); if (alive()) window.hide(); }
+    hide() {
+      stop();
+      if (alive()) window.hide();
+    },
   };
 }
 module.exports = { createOverlayLayer };

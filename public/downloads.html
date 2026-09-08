@@ -1,19 +1,99 @@
 <!doctype html>
 <html lang="fr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Télécharger MemeRoom</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/downloads.css"></head>
-<body><main class="app downloads">
-  <header><a class="brand" href="/"><img src="/favicon.svg" alt="" width="32" height="32"><span>MemeRoom</span></a></header>
-  <h1>Télécharger l’application</h1>
-  <p class="intro">Recevez les images, vidéos et sons de votre room sur votre écran.</p>
-  <div class="download-options">
-    <section aria-labelledby="windows-title"><h2 id="windows-title">Windows</h2><p class="muted">Windows 10 et 11 · 64 bits</p><a id="windows-download" class="download-button primary" aria-disabled="true">Télécharger le .exe</a><p id="windows-info" class="muted">Chargement…</p><p>Lancez le fichier pour installer MemeRoom.</p></section>
-    <section aria-labelledby="linux-title"><h2 id="linux-title">Linux</h2><p class="muted">AppImage · x86_64 · Arch et autres distributions</p><a id="linux-download" class="download-button primary" aria-disabled="true">Télécharger l’AppImage</a><p id="linux-info" class="muted">Chargement…</p><p>Autorisez l’exécution du fichier dans ses propriétés, puis ouvrez-le.</p></section>
-    <section class="mac-downloads" aria-labelledby="mac-title"><h2 id="mac-title">Mac</h2><p class="muted">Choisissez le processeur indiqué dans À propos de ce Mac.</p><div class="mac-options"><div><a id="macArm64-download" class="download-button primary" aria-disabled="true">Apple Silicon · M1 et suivants</a><p id="macArm64-info" class="muted">Chargement…</p></div><div><a id="macIntel-download" class="download-button primary" aria-disabled="true">Intel</a><p id="macIntel-info" class="muted">Chargement…</p></div></div><p>Décompressez le ZIP, puis ouvrez <strong>Installer MemeRoom.command</strong> à côté de l’application. Il installe MemeRoom dans votre dossier Applications et recrée sa signature locale. Version communautaire non notariée par Apple.</p></section>
-  </div>
-  <p class="update-note">Sur Windows et Linux, les prochaines mises à jour s’installeront au démarrage. Sur Mac, relancez l’installateur de la nouvelle version. Vos rooms et réglages seront conservés.</p>
-  <p class="muted">Sous Linux, gardez l’AppImage dans un dossier où vous pouvez écrire. L’overlay utilise X11 ou XWayland.</p>
-  <p id="download-status" class="muted" role="status"></p>
-  <noscript><p>Activez JavaScript pour afficher les téléchargements disponibles.</p></noscript>
-  <footer class="download-credit"><a href="https://www.youtube.com/watch?v=2ICFtXx546A" target="_blank" rel="noopener noreferrer">Cueilli par Rose Roubaud.</a><p><a href="https://github.com/Rose-Roubaud/memeroom" target="_blank" rel="noopener noreferrer">Code et contributions</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a></p></footer>
-</main><script type="module" src="/downloads.mjs"></script></body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Télécharger MemeRoom</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/downloads.css" />
+  </head>
+  <body>
+    <main class="app downloads">
+      <header>
+        <a class="brand" href="/"
+          ><img src="/favicon.svg" alt="" width="32" height="32" /><span>MemeRoom</span></a
+        >
+      </header>
+      <h1>Télécharger l’application</h1>
+      <p class="intro">Recevez les images, vidéos et sons de votre room sur votre écran.</p>
+      <div class="download-options">
+        <section aria-labelledby="windows-title">
+          <h2 id="windows-title">Windows</h2>
+          <p class="muted">Windows 10 et 11 · 64 bits</p>
+          <a id="windows-download" class="download-button primary" aria-disabled="true"
+            >Télécharger le .exe</a
+          >
+          <p id="windows-info" class="muted">Chargement…</p>
+          <p>Lancez le fichier pour installer MemeRoom.</p>
+        </section>
+        <section aria-labelledby="linux-title">
+          <h2 id="linux-title">Linux</h2>
+          <p class="muted">AppImage · x86_64 · Arch et autres distributions</p>
+          <a id="linux-download" class="download-button primary" aria-disabled="true"
+            >Télécharger l’AppImage</a
+          >
+          <p id="linux-info" class="muted">Chargement…</p>
+          <p>Autorisez l’exécution du fichier dans ses propriétés, puis ouvrez-le.</p>
+        </section>
+        <section class="mac-downloads" aria-labelledby="mac-title">
+          <h2 id="mac-title">Mac</h2>
+          <p class="muted">Choisissez le processeur indiqué dans À propos de ce Mac.</p>
+          <div class="mac-options">
+            <div>
+              <a id="macArm64-download" class="download-button primary" aria-disabled="true"
+                >Apple Silicon · M1 et suivants</a
+              >
+              <p id="macArm64-info" class="muted">Chargement…</p>
+            </div>
+            <div>
+              <a id="macIntel-download" class="download-button primary" aria-disabled="true"
+                >Intel</a
+              >
+              <p id="macIntel-info" class="muted">Chargement…</p>
+            </div>
+          </div>
+          <p>
+            Décompressez le ZIP, puis ouvrez <strong>Installer MemeRoom.command</strong> à côté de
+            l’application. Il installe MemeRoom dans votre dossier Applications et recrée sa
+            signature locale. Version communautaire non notariée par Apple.
+          </p>
+        </section>
+      </div>
+      <p class="update-note">
+        Sur Windows et Linux, les prochaines mises à jour s’installeront au démarrage. Sur Mac,
+        relancez l’installateur de la nouvelle version. Vos rooms et réglages seront conservés.
+      </p>
+      <p class="muted">
+        Sous Linux, gardez l’AppImage dans un dossier où vous pouvez écrire. L’overlay utilise X11
+        ou XWayland.
+      </p>
+      <p id="download-status" class="muted" role="status"></p>
+      <noscript><p>Activez JavaScript pour afficher les téléchargements disponibles.</p></noscript>
+      <footer class="download-credit">
+        <a
+          href="https://www.youtube.com/watch?v=2ICFtXx546A"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Cueilli par Rose Roubaud.</a
+        >
+        <p>
+          <a
+            href="https://github.com/Rose-Roubaud/memeroom"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Code et contributions</a
+          >
+          ·
+          <a
+            href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr"
+            target="_blank"
+            rel="noopener noreferrer"
+            >CC BY-NC-SA 4.0</a
+          >
+        </p>
+      </footer>
+    </main>
+    <script type="module" src="/downloads.mjs"></script>
+  </body>
 </html>

@@ -1,27 +1,45 @@
 // This module has no Electron dependency so failure/skip paths can be exercised in tests.
-async function runStartupUpdate({ updater, signal, status = () => {}, install, checkTimeoutMs = 6000, stallTimeoutMs = 30000 }) {
+async function runStartupUpdate({
+  updater,
+  signal,
+  status = () => {},
+  install,
+  checkTimeoutMs = 6000,
+  stallTimeoutMs = 30000,
+}) {
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
   updater.allowDowngrade = false;
   updater.allowPrerelease = false;
-  let stopped = false, timer, cancelDownload, rejectInterrupted;
-  const interrupted = new Promise((_, reject) => { rejectInterrupted = reject; });
+  let stopped = false,
+    timer,
+    cancelDownload,
+    rejectInterrupted;
+  const interrupted = new Promise((_, reject) => {
+    rejectInterrupted = reject;
+  });
   // Cancellation may precede the first awaited operation.
   interrupted.catch(() => {});
-  const stop = message => {
+  const stop = (message) => {
     if (stopped) return;
     stopped = true;
     cancelDownload?.();
     rejectInterrupted(new Error(message));
   };
   const skip = () => stop('Mise à jour ignorée pour ce lancement.');
-  const timeout = milliseconds => { clearTimeout(timer); timer = setTimeout(() => stop('Le serveur de mise à jour ne répond pas.'), milliseconds); };
+  const timeout = (milliseconds) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => stop('Le serveur de mise à jour ne répond pas.'), milliseconds);
+  };
   // electron-updater also emits errors for rejected checks and downloads.
   const onError = () => {};
-  const progress = info => {
+  const progress = (info) => {
     if (stopped) return;
     timeout(stallTimeoutMs);
-    status({ phase: 'downloading', percent: Math.min(100, Math.max(0, Math.round(info.percent || 0))) });
+    status({
+      phase: 'downloading',
+      percent: Math.min(100, Math.max(0, Math.round(info.percent || 0))),
+    });
   };
   updater.on('error', onError);
   updater.on('download-progress', progress);
