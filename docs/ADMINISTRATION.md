@@ -14,9 +14,12 @@ Sur l'hôte du processus Node, avec les mêmes variables d'environnement :
 
 ```sh
 npm run rooms -- list
+npm run rooms -- status
 npm run rooms -- delete ABCDEFGH
 ```
 
 `MEMEROOM_ADMIN_URL` permet de préciser l'adresse locale du serveur ; sinon le CLI utilise `http://127.0.0.1:${PORT}`, avec 3210 par défaut. L'argument `delete CODE` est une demande explicite de suppression définitive : vérifier la liste avant de l'exécuter.
 
 Dans Docker, injecter `MEMEROOM_ADMIN_TOKEN` dans le service `memeroom`, puis exécuter la commande **dans le conteneur** avec `docker compose exec memeroom npm run rooms -- list` (ajouter `-f compose.nginx.yaml` pour cette variante). Il n'est pas nécessaire d'exposer les routes administratives à travers le proxy.
+
+`status` affiche les nombres de rooms, sessions, médias, octets et imports en cours, la durée de fonctionnement et les compteurs d’erreurs. Les journaux d’erreurs HTTP, WebSocket et disque utilisent des catégories fixes, sans contenu des messages, adresse IP, chemin personnel ou jeton. Les répétitions sont limitées à une ligne par catégorie toutes les dix secondes ; les compteurs continuent d’augmenter. Aucun service de télémétrie externe n’est ajouté.

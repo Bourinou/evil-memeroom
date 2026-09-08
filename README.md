@@ -15,6 +15,9 @@ MemeRoom partage du texte, des images, des vidéos et des sons entre les membres
 - [Architecture et responsabilités des dossiers](docs/ARCHITECTURE.md)
 - [Audit de structure, maintenance et ouverture aux contributions — septembre 2026](docs/AUDIT-2026-09-08.md)
 - [Développement, interface et tests](docs/DEVELOPPEMENT.md)
+- [Contrat réseau et IPC](docs/PROTOCOLE.md), [configuration](docs/CONFIGURATION.md) et [administration des rooms](docs/ADMINISTRATION.md)
+- [Distribuer un fork sous licence non commerciale](docs/FORKS.md)
+- [Refonte : changements, démarche TDD et validations](docs/REFONTE.md)
 - [Sécurité et signalement privé](SECURITY.md)
 - [Installer le serveur derrière Nginx](DEPLOYER.md)
 
@@ -92,6 +95,6 @@ npm run stage:releases
 npm run pack:server
 ```
 
-Les vérifications de cette version sont ciblées : serveur, mots de passe, nettoyage, messages conservés après expiration, protocole antivirus avec un service simulé, réglages et téléchargement lent dans Electron Windows. Le moteur ClamAV Docker et l’installation Mac ne sont pas validés sur cette machine. Les suites longues de lecture ne sont pas systématiquement relancées.
+Les commandes de vérification et les scénarios Electron sont décrits dans le [guide de développement](docs/DEVELOPPEMENT.md). La CI couvre Node sur Linux/Windows et Electron sur Windows. Les résultats de la refonte sont consignés dans son [journal](docs/REFONTE.md), avec les limites de validation Mac/Linux et ClamAV réel.
 
 Le déploiement complet, incluant les nouveaux réglages Nginx et ClamAV, est expliqué dans [DEPLOYER.md](DEPLOYER.md). Les mises à jour Windows/Linux sont recherchées au démarrage sur le serveur officiel. Les mises à jour Mac restent manuelles. Les rooms, préférences et messages enregistrés sont conservés.

@@ -17,6 +17,7 @@ function assetURL(asset, server) {
     throw new Error('Média invalide.');
   return new URL(asset.url, base).href;
 }
+/** @param {import('../shared/contracts').MediaAsset} asset */
 async function downloadAsset(asset, server, destination, signal) {
   const timedSignal = AbortSignal.timeout(TRANSFER_MS);
   const response = await fetch(assetURL(asset, server), {

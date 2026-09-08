@@ -8,10 +8,10 @@ La méthode suit des tests de caractérisation pour les extractions, et le cycle
 
 - [x] Socle de tests fiable, scénarios indépendants et CI.
 - [x] Formatage, règles de qualité et CSS organisé sans changement visuel.
-- [ ] Cycle de vie des rooms et des temporaires.
-- [ ] Frontières serveur, renderer, lecture et contrats partagés.
-- [ ] Livrables indépendants et documentation des contributions/forks.
-- [ ] Optimisations mesurées, hébergement à la demande et diagnostics.
+- [x] Cycle de vie des rooms et des temporaires.
+- [x] Frontières serveur, renderer, lecture et contrats partagés.
+- [x] Livrables indépendants et documentation des contributions/forks.
+- [x] Optimisations mesurées, hébergement à la demande et diagnostics.
 - [x] Décision de licence : conserver le non-commercial.
 
 ## Journal TDD
@@ -49,3 +49,34 @@ La suite Electron complète passe avec ces composants : apparence, lecture (dont
 ### Hébergement à la demande et interface
 
 Trois tests écrits avant `local-host.cjs` couvrent l’absence de démarrage à la consultation des informations, la mutualisation des demandes, le port occupé et l’arrêt pendant le démarrage. Le scénario Electron rooms passe avec un participant qui n’héberge pas de serveur, y compris après redémarrage de l’hôte sur un autre port. La capture des raccourcis est extraite dans son propre module et son scénario natif passe. Un test réseau précède le remplacement des comparaisons de messages par des codes d’erreur stables.
+
+### Distribution et diagnostics
+
+Les tests de l’archive serveur sont ajoutés avant son module de préparation. Le test de staging partiel échoue d’abord sur le dossier Linux absent, puis passe après sélection indépendante des plateformes et conservation du manifeste existant. L’archive serveur exclut Electron et les données ; les téléchargements sont facultatifs. Les builds Windows décompressés officiel et fork sont compilés avec succès dans `.test-artifacts/`.
+
+Les tests de configuration du fork précèdent la nouvelle configuration : identité et profil distincts, mises à jour désactivées par défaut, flux officiel refusé. Les paramètres de distribution officiels restent conservés.
+
+Deux tests précèdent les diagnostics et l’accès aux statistiques administratives. Un cas supplémentaire reproduit l’acceptation d’une demande relayée par un proxy local ; les en-têtes de relais la font maintenant refuser. Les erreurs sont comptées et journalisées sans secrets, avec limitation des répétitions. La version annoncée par HTTP est lue dans le manifeste.
+
+## Résultats et limites
+
+| Contrôle exécuté localement | Résultat |
+| --- | --- |
+| Node 24.19.0 et Node 25.9.0 sous Windows | 70 tests réussis, un test de lien symbolique ignoré sous Windows |
+| Syntaxe, ESLint, Prettier | Réussite |
+| Electron 44.2.0, sources | Apparence, lecture, rooms réussis ; rooms rejoué après hébergement à la demande |
+| Paquet Windows décompressé, profil isolé | Apparence, lecture et rooms réussis |
+| Scénarios ciblés sur les sources finales | Réglages, sauvegarde de messages, téléchargement lent et raccourcis réussis |
+| Contrôle natif plein écran Windows | Ordre des fenêtres, focus et styles de passage des clics réussis |
+| Build de fork Windows | Réussite avec identifiant, exécutable et métadonnées distincts |
+| Archive serveur extraite, Node 24 | `npm ci --omit=dev --ignore-scripts` puis HTTP, styles et création WebSocket réussis sans compilations desktop |
+| Audit npm complet | Aucune vulnérabilité signalée au moment du contrôle ; registre interrogé hors bac à sable |
+| Documentation | 15 documents Markdown contrôlés, aucun lien local vers un fichier manquant |
+
+Les gains mesurés par les tests sont des comptes d’opérations, pas des pourcentages de vitesse : deux consommateurs du même média font un transfert au lieu de deux ; 50 changements rapprochés écrivent le dernier état une fois ; consulter les informations de l’app n’ouvre aucun serveur, et deux demandes d’hébergement partagent une seule instance. Les textes sans sous-titres ne demandent plus d’animation continue. Aucun gain CPU/RAM en production n’est revendiqué.
+
+Les limites de 1 Gio par fichier et la persistance des rooms sont conservées. Les écritures de rooms restent synchrones et atomiques : elles concernent au maximum 100 petites fiches et ne sont pas dans le flux de diffusion des messages. Un passage en base de données ou un framework supplémentaire n’est pas justifié par les mesures disponibles. Le manifeste commun installe encore `electron-updater` sur le serveur autonome ; cette petite dépendance indirectement utile au desktop est conservée pour éviter un second graphe de dépendances à maintenir.
+
+La CI est versionnée mais son exécution distante reste à constater après publication de la branche. Les tests Windows et le protocole antivirus simulé ne valident pas une installation Mac/Linux, le plein écran exclusif des jeux ou un moteur ClamAV réel. Les binaires de test ne sont pas publiés et ne portent pas une nouvelle version ; une livraison nécessite de choisir une nouvelle version et de valider les plateformes visées.
+
+La revue du paquet de fork confirme le nom de paquet et de produit distincts, le renderer complet dans l’ASAR, les mises à jour désactivées et l’absence de manifeste de mise à jour officiel. Les types de contrat sont des aides d’édition ; ils ne constituent pas une vérification TypeScript globale. La licence CC BY-NC-SA 4.0 n’a pas été modifiée.

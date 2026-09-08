@@ -92,10 +92,10 @@ npm run dist -- --config.directories.output=release/build-0.6.0
 wsl -e bash scripts/build-linux.sh --skip-checks
 wsl -e bash scripts/build-mac.sh
 npm run stage:releases
-npm run pack:server
+npm run pack:server -- --with-releases
 ```
 
-Les scripts vérifient tailles et empreintes avant de préparer `releases/`. Le ZIP serveur contient Windows, Linux, Mac Apple Silicon et Mac Intel ainsi que les manifestes. Windows/Linux recherchent les mises à jour sur `https://memeroom.tonamielarose.fr/releases/` au démarrage. Quitter complètement l’app avant de la relancer. SmartScreen peut encore avertir : le setup Windows ne possède pas de certificat éditeur.
+Les scripts vérifient tailles et empreintes avant de préparer `releases/`. `npm run pack:server` produit le serveur seul, sans dépendre d’une compilation desktop. L’option `--with-releases` y ajoute les téléchargements déjà préparés, même si une seule plateforme est disponible. Pour préparer uniquement Windows, utiliser `npm run stage:releases -- release/build-0.6.0 - -` ; les autres plateformes sont conservées. Les mises à jour Windows/Linux de la distribution officielle restent sur le serveur officiel. Pour une adaptation, voir [FORKS.md](docs/FORKS.md). SmartScreen peut encore avertir : le setup Windows ne possède pas de certificat éditeur.
 
 Les rooms serveur restent dans `memeroom_data`. Les réglages et messages enregistrés restent dans le dossier utilisateur des applications, notamment `saved-messages/`. Le contenu de ce dossier est personnel et peut occuper de l’espace jusqu’à suppression explicite. Aucun fichier temporaire serveur n’est destiné à être sauvegardé.
 
