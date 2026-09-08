@@ -418,11 +418,13 @@ try {
         document.querySelector('video')?.muted === true,
     );
     await assertCentered(bob);
-    await capture(bob.overlay, 'centered-video.png', { omitBackground: true });
     await bob.overlay.waitForFunction(
       () => document.querySelector('video')?.ended && !document.querySelector('audio')?.ended,
     );
     assert.equal((await overlayState(bob)).visible, true);
+    // Capture after checking the brief video-ended/audio-playing interval: screenshots
+    // can take several seconds on a loaded runner and must not consume that interval.
+    await capture(bob.overlay, 'centered-video.png', { omitBackground: true });
     await waitOverlay(bob, false);
     record('Vidéo, piste audio supplémentaire, sous-titres et volume conservés');
     await bob.page.evaluate(async () => {
