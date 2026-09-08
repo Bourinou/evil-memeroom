@@ -1,0 +1,4 @@
+main { padding:26px 32px; }
+#status { font-size:14px; margin-top:16px; }
+progress { display:block; width:100%; height:6px; margin-top:15px; accent-color:#30343b; }
+#skip { margin-top:20px; }

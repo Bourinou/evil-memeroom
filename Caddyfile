@@ -1,0 +1,8 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$MEMEROOM_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy memeroom:3210
+}

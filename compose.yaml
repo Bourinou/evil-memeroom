@@ -1,0 +1,48 @@
+services:
+  memeroom:
+    build: .
+    restart: unless-stopped
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      MEMEROOM_RELEASES_DIR: /releases
+      MEMEROOM_TRUST_PROXY: "1"
+      MEMEROOM_SCAN_REQUIRED: "1"
+      CLAMAV_HOST: clamav
+      MEMEROOM_FFPROBE: /usr/bin/ffprobe
+    depends_on:
+      clamav:
+        # Media publication still requires a successful antivirus scan.
+        condition: service_started
+    expose:
+      - "3210"
+    volumes:
+      - memeroom_data:/data
+      - ./releases:/releases:ro
+    mem_limit: 768m
+  clamav:
+    image: clamav/clamav:1.4_base
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+      - ./deploy/clamd.conf:/etc/clamav/clamd.conf:ro
+    mem_limit: 4g
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - memeroom
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MEMEROOM_DOMAIN: ${MEMEROOM_DOMAIN:?Définir MEMEROOM_DOMAIN dans .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Définir ACME_EMAIL dans .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  clamav_data:
+  memeroom_data:
+  caddy_data:
+  caddy_config:

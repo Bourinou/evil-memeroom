@@ -1,0 +1,29 @@
+# Inside the existing HTTPS server block for memeroom.tonamielarose.fr.
+# Replace this site's existing location / (and location /ws if present).
+# Keep its server_name, listen, certificate and other TLS settings.
+# If MEMEROOM_HTTP_PORT was changed, adjust both proxy_pass ports below.
+location / {
+    proxy_pass http://127.0.0.1:3210;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 1024m;
+    client_body_timeout 60s;
+    proxy_request_buffering off;
+    proxy_send_timeout 1800s;
+    proxy_read_timeout 1800s;
+    proxy_cache off;
+    proxy_buffering off;
+}
+
+location = /ws {
+    proxy_pass http://127.0.0.1:3210;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 300s;
+}
