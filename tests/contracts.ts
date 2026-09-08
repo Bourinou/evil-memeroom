@@ -14,3 +14,5 @@ validateReaction({ caption: 'Test', duration: '5' }, new Map());
 void connection.request('broadcats', { caption: 'Test', duration: 5 });
 // @ts-expect-error Native persistence accepts a client state, not just a nickname.
 void window.memeroom.saveClient({ nickname: 'Test' });
+// @ts-expect-error Playback generations sent by the main process are numeric.
+window.overlay.ready('1');

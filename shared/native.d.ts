@@ -57,14 +57,14 @@ export interface NativeAPI {
 }
 export interface OverlayAPI {
   onShow(
-    callback: (value: ReactionEnvelope & { playbackId: string; volume: number }) => void,
+    callback: (value: ReactionEnvelope & { playbackId: number; volume: number }) => void,
   ): void;
   onClear(callback: () => void): void;
   onVolume(callback: (value: number) => void): void;
-  done(id: string): void;
-  ready(id: string): void;
-  progress(id: string): void;
-  error(message: string, id: string): void;
+  done(id: number): void;
+  ready(id: number): void;
+  progress(id: number): void;
+  error(message: string, id: number): void;
 }
 declare global {
   interface Window {
