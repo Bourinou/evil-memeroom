@@ -59,6 +59,7 @@ async function launch(name, port = '0') {
     const info = await window.memeroom.info();
     await window.memeroom.saveSettings({ ...info.settings, cooldown: 3, volume: 27 });
   });
+  if (name === 'alice') await page.evaluate(() => window.memeroom.ensureHosting());
   const server = await page.evaluate(async () => (await window.memeroom.info()).server);
   assert.equal(page.url(), 'http://localhost/remote');
   return { app, page, overlay, profile, server };
@@ -189,6 +190,7 @@ try {
   record('Création d’une room publique protégée ; accès mémorisé sans mot de passe en clair');
 
   let bob = await launch('bob');
+  assert.equal(await bob.page.evaluate(async () => (await window.memeroom.info()).hosting), false);
   await bob.page.click('#add-room');
   await bob.page.fill('#nickname', 'Bob');
   await bob.page.fill('#server-url', alice.server);

@@ -16,6 +16,10 @@ const files = new Map([
   ['/shared/base.css', ['shared/base.css', 'text/css; charset=utf-8']],
   ['/connection.mjs', ['desktop/renderer/connection.mjs', 'text/javascript; charset=utf-8']],
   [
+    '/shortcut-settings.mjs',
+    ['desktop/renderer/shortcut-settings.mjs', 'text/javascript; charset=utf-8'],
+  ],
+  [
     '/preview-source.mjs',
     ['desktop/renderer/preview-source.mjs', 'text/javascript; charset=utf-8'],
   ],

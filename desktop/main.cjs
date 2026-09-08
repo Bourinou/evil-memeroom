@@ -14,7 +14,7 @@ const {
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
-const os = require('node:os');
+const { createLocalHost } = require('./local-host.cjs');
 const { CONTROL_URL, installControlPage } = require('./control-page.cjs');
 const { MediaCache } = require('./media-cache.cjs');
 const { createPlayback } = require('./playback.cjs');
@@ -34,8 +34,6 @@ if (!singleInstance) app.quit();
 let control,
   overlay,
   tray,
-  localServer,
-  baseUrl,
   settings,
   clientState,
   protocol,
@@ -86,6 +84,7 @@ function sendSettings() {
 }
 const settingsWriter = createAtomicWriter(settingsPath());
 const clientWriter = createAtomicWriter(clientPath());
+const localHost = createLocalHost({ dataDir: path.join(app.getPath('userData'), 'server') });
 async function saveClient(value) {
   clientState = protocol.cleanClientState(value);
   await clientWriter.save(clientState);
@@ -179,25 +178,6 @@ if (singleInstance)
           throw new Error('Impossible de lire les rooms enregistrées : ' + error.message);
         clientState = null;
       }
-      const { createRoomServer } = await import(
-        pathToFileURL(path.join(__dirname, '../server/index.mjs')).href
-      );
-      const dataDir = path.join(app.getPath('userData'), 'server');
-      localServer = createRoomServer({
-        host: process.env.HOST || '0.0.0.0',
-        port: Number(process.env.MEMEROOM_PORT || 3210),
-        dataDir,
-      });
-      let address;
-      try {
-        address = await localServer.start();
-      } catch (error) {
-        if (error.code !== 'EADDRINUSE') throw error;
-        await localServer.stop();
-        localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: 0, dataDir });
-        address = await localServer.start();
-      }
-      baseUrl = `http://127.0.0.1:${address.port}`;
       const controlSession = session.fromPartition('memeroom-control');
       mediaCache = new MediaCache({ root: process.env.MEMEROOM_TEMP_DIR });
       previewMedia = createPreviewMedia(mediaCache, async (file, request, mime) => {
@@ -286,22 +266,23 @@ if (singleInstance)
       secureWindow(overlay);
       ipcMain.handle('app:info', (event) => {
         if (!trustedControl(event)) throw new Error('Accès refusé.');
-        const addresses = Object.values(os.networkInterfaces())
-          .flat()
-          .filter((n) => n && n.family === 'IPv4' && !n.internal)
-          .map((n) => `http://${n.address}:${address.port}`);
         return {
           settings,
           clientState,
           shortcutError,
           platform: process.platform,
-          server: baseUrl,
-          addresses,
+          ...localHost.info(),
           displays: screen.getAllDisplays().map((d, i) => ({
             id: String(d.id),
             label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}`,
           })),
         };
+      });
+      ipcMain.handle('host:ensure', async (event) => {
+        if (!trustedControl(event)) throw new Error('Accès refusé.');
+        const info = await localHost.ensure();
+        if (!control.isDestroyed()) control.webContents.send('host:changed', info);
+        return info;
       });
       ipcMain.handle('preview:prepare', (event, id, asset, server) => {
         if (!trustedControl(event)) throw new Error('Accès refusé.');
@@ -358,7 +339,7 @@ if (singleInstance)
         if (!trustedControl(event)) throw new Error('Accès refusé.');
         return playback.display(
           {
-            server: baseUrl,
+            server: localHost.info().server,
             duration: 4,
             caption: 'Test de l’overlay',
             sender: { name: clientState?.nickname || 'MemeRoom' },
@@ -464,7 +445,7 @@ app.on('before-quit', (event) => {
     settingsWriter.flush(),
     clientWriter.flush(),
     mediaCache?.close(),
-    localServer?.stop(),
+    localHost.stop(),
   ]).then((results) => {
     for (const result of results)
       if (result.status === 'rejected')

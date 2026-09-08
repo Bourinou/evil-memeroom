@@ -1,3 +1,12 @@
+const networkError = (code, message) => Object.assign(new Error(message), { code });
+export const isNetworkError = (error) =>
+  [
+    'NETWORK_UNAVAILABLE',
+    'NETWORK_INTERRUPTED',
+    'NETWORK_DISCONNECTED',
+    'NETWORK_TIMEOUT',
+  ].includes(error?.code);
+
 export class Connection {
   constructor(origin, onEvent, onClose) {
     this.origin = origin;
@@ -34,7 +43,7 @@ export class Connection {
       clearInterval(this.heartbeat);
       for (const pending of this.pending.values()) {
         clearTimeout(pending.timer);
-        pending.reject(new Error('Connexion interrompue.'));
+        pending.reject(networkError('NETWORK_INTERRUPTED', 'Connexion interrompue.'));
       }
       this.pending.clear();
       if (!this.intentional) this.onClose();
@@ -42,7 +51,7 @@ export class Connection {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.close();
-        reject(new Error('Serveur inaccessible.'));
+        reject(networkError('NETWORK_UNAVAILABLE', 'Serveur inaccessible.'));
       }, 6000);
       this.ws.addEventListener(
         'open',
@@ -56,7 +65,7 @@ export class Connection {
         'error',
         () => {
           clearTimeout(timer);
-          reject(new Error('Serveur inaccessible.'));
+          reject(networkError('NETWORK_UNAVAILABLE', 'Serveur inaccessible.'));
         },
         { once: true },
       );
@@ -64,15 +73,15 @@ export class Connection {
     this.heartbeat = setInterval(() => this.request('ping').catch(() => this.ws.close()), 20000);
   }
   request(type, data = {}) {
-    if (this.ws.readyState !== WebSocket.OPEN)
-      return Promise.reject(new Error('Serveur déconnecté.'));
+    if (this.ws?.readyState !== WebSocket.OPEN)
+      return Promise.reject(networkError('NETWORK_DISCONNECTED', 'Serveur déconnecté.'));
     const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
       byte.toString(16).padStart(2, '0'),
     ).join('');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error('Le serveur ne répond pas.'));
+        reject(networkError('NETWORK_TIMEOUT', 'Le serveur ne répond pas.'));
       }, 10000);
       this.pending.set(id, { resolve, reject, timer, sentAt: Date.now() });
       this.ws.send(JSON.stringify({ id, type, data }));

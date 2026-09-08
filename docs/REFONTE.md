@@ -45,3 +45,7 @@ Six tests de cache, trois tests de lecture, deux tests d’URL privée et deux t
 L’aperçu complet et l’overlay utilisent le même téléchargement borné sur disque, sans conversion intégrale en Blob. Le cache réserve 2 Gio maximum, conserve les lecteurs actifs et expire les copies libres. La lecture est extraite du processus principal ; l’arrêt attend cache, serveur et écritures. Les réactions sans sous-titres ne démarrent plus de boucle d’animation.
 
 La suite Electron complète passe avec ces composants : apparence, lecture (dont aperçu vidéo + audio et sous-titres tardifs) et reconnexion après redémarrage.
+
+### Hébergement à la demande et interface
+
+Trois tests écrits avant `local-host.cjs` couvrent l’absence de démarrage à la consultation des informations, la mutualisation des demandes, le port occupé et l’arrêt pendant le démarrage. Le scénario Electron rooms passe avec un participant qui n’héberge pas de serveur, y compris après redémarrage de l’hôte sur un autre port. La capture des raccourcis est extraite dans son propre module et son scénario natif passe. Un test réseau précède le remplacement des comparaisons de messages par des codes d’erreur stables.

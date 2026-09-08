@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('memeroom', {
   info: () => ipcRenderer.invoke('app:info'),
+  ensureHosting: () => ipcRenderer.invoke('host:ensure'),
+  onHosting: (callback) => ipcRenderer.on('host:changed', (_event, value) => callback(value)),
   preparePreview: (id, asset, server) => ipcRenderer.invoke('preview:prepare', id, asset, server),
   releasePreview: (id) => ipcRenderer.send('preview:release', id),
   saveSettings: (value) => ipcRenderer.invoke('settings:save', value),

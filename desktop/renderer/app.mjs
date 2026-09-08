@@ -5,12 +5,12 @@ import {
   normalizeServer,
   parseSubtitles,
   hasTimedMedia,
-  validDismissShortcut,
   LIMITS,
 } from '../../shared/protocol.mjs';
-import { Connection } from './connection.mjs';
+import { Connection, isNetworkError } from './connection.mjs';
 import { mountReaction } from '../../shared/render/media-view.mjs';
 import { preparePreview } from './preview-source.mjs';
+import { createShortcutSettings } from './shortcut-settings.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const native = window.memeroom;
@@ -54,31 +54,18 @@ let mode = 'create',
   nextSend = 0,
   directoryRequest;
 let status = 'Aucune room sélectionnée.';
-let recordingShortcut = false,
-  shortcutBusy = false;
 let mac = false;
 let presets = [],
   editingPreset = null,
   presetBusy = false;
-const shortcutLabel = (value) =>
-  value
-    ? value
-        .split('+')
-        .map(
-          (key) =>
-            ({
-              Control: 'Ctrl',
-              Shift: 'Maj',
-              Super: mac ? 'Cmd' : 'Windows',
-              Space: 'Espace',
-              Up: 'Haut',
-              Down: 'Bas',
-              Left: 'Gauche',
-              Right: 'Droite',
-            })[key] || key,
-        )
-        .join(' + ')
-    : 'Choisir un raccourci';
+const shortcutUI = createShortcutSettings({
+  native,
+  getSettings: () => settings,
+  onChange: (value) => {
+    settings = value;
+  },
+  isMac: () => mac,
+});
 const keyFor = (value) => (value ? `${value.server}|${value.code}` : '');
 const resolveServer = (ref) => (ref === 'local' ? localServer : ref);
 function referenceFor(url) {
@@ -243,10 +230,7 @@ function renderLibrary() {
   for (const asset of library) $('#existing-media').add(new Option(asset.name, asset.id));
 }
 function renderSettings() {
-  if (!recordingShortcut)
-    $('#dismiss-shortcut').textContent = shortcutLabel(settings.dismissShortcut);
-  $('#dismiss-shortcut').disabled = shortcutBusy;
-  $('#disable-dismiss-shortcut').disabled = shortcutBusy || !settings.dismissShortcut;
+  shortcutUI.render();
   $('#auto-join').checked = client.autoJoin;
   $('#setting-paused').checked = settings.paused;
   for (const key of ['volume', 'size', 'cooldown', 'position', 'display'])
@@ -408,7 +392,7 @@ async function attemptJoin(currentEpoch, create) {
     connected = false;
     room = null;
     current.close();
-    const unavailable = /inaccessible|interrompue|déconnecté|ne répond pas/.test(error.message);
+    const unavailable = isNetworkError(error);
     if (!create && unavailable && client.rooms.some((entry) => keyFor(entry) === keyFor(target)))
       scheduleRetry(currentEpoch);
     else {
@@ -421,6 +405,7 @@ async function attemptJoin(currentEpoch, create) {
 }
 async function chooseRoom(record, create = false) {
   disconnect();
+  if (record.server === 'local') applyHosting(await native.ensureHosting());
   target = { ...record };
   status = 'Connexion…';
   renderRooms();
@@ -461,6 +446,15 @@ function updateHostAddress() {
   }
   $('#host-address').hidden = !ownServer || !addresses.length;
 }
+function applyHosting(info) {
+  if ($('#server-url').value === localServer) $('#server-url').value = info.server;
+  localServer = info.server;
+  addresses = info.addresses;
+  $('#host-address').textContent = addresses.length
+    ? `Adresse de ce PC pour vos amis : ${addresses.join(' ou ')}`
+    : '';
+  updateHostAddress();
+}
 $('#add-room').addEventListener('click', () => {
   $('#nickname').value = client.nickname;
   $('#server-url').value = resolveServer(target?.server || (native ? 'local' : location.origin));
@@ -488,7 +482,11 @@ async function loadDirectory() {
   $('#directory-status').textContent = 'Chargement des rooms…';
   $('#refresh-rooms').disabled = true;
   try {
-    const server = normalizeServer($('#server-url').value.trim());
+    let server = normalizeServer($('#server-url').value.trim());
+    if (referenceFor(server) === 'local') {
+      applyHosting(await native.ensureHosting());
+      server = localServer;
+    }
     const response = await fetch(`${server}/api/rooms`, { signal: request.signal });
     if (response.status === 404)
       throw new Error('Ce serveur doit être mis à jour en 0.4.0 pour afficher ses rooms.');
@@ -868,89 +866,6 @@ $('#auto-join').addEventListener('change', async (event) => {
   client.autoJoin = event.target.checked;
   await saveClient();
 });
-async function stopShortcutCapture() {
-  recordingShortcut = false;
-  renderSettings();
-  if (native) await native.recordShortcut(false);
-}
-async function saveDismissShortcut(value) {
-  shortcutBusy = true;
-  try {
-    await stopShortcutCapture();
-    settings = await native.saveDismissShortcut(value);
-    $('#shortcut-hint').textContent = value
-      ? 'Raccourci enregistré. Arrête uniquement le contenu en cours sur votre écran.'
-      : 'Raccourci désactivé.';
-  } catch (error) {
-    $('#shortcut-hint').textContent = error.message;
-  } finally {
-    shortcutBusy = false;
-    renderSettings();
-  }
-}
-$('#dismiss-shortcut').addEventListener('click', async () => {
-  if (recordingShortcut) {
-    await stopShortcutCapture();
-    return;
-  }
-  try {
-    await native.recordShortcut(true);
-    recordingShortcut = true;
-    $('#dismiss-shortcut').textContent = 'Appuyez sur les touches…';
-    $('#shortcut-hint').textContent =
-      `Ctrl, Alt ou ${mac ? 'Cmd' : 'Windows'} + une touche, ou F1 à F24. Échap pour annuler.`;
-  } catch (error) {
-    $('#shortcut-hint').textContent = error.message;
-  }
-});
-$('#disable-dismiss-shortcut').addEventListener('click', () => saveDismissShortcut(''));
-$('#dismiss-shortcut').addEventListener('blur', () => {
-  if (recordingShortcut) void stopShortcutCapture();
-});
-$('#settings-dialog').addEventListener('close', () => {
-  if (recordingShortcut) void stopShortcutCapture();
-});
-window.addEventListener('blur', () => {
-  if (recordingShortcut) void stopShortcutCapture();
-});
-document.addEventListener(
-  'keydown',
-  (event) => {
-    if (!recordingShortcut) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.key === 'Escape' || event.key === 'Tab') {
-      void stopShortcutCapture();
-      return;
-    }
-    if (event.repeat || ['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
-    const aliases = {
-      ' ': 'Space',
-      ArrowUp: 'Up',
-      ArrowDown: 'Down',
-      ArrowLeft: 'Left',
-      ArrowRight: 'Right',
-    };
-    const key =
-      aliases[event.key] || (event.key.length === 1 ? event.key.toUpperCase() : event.key);
-    const shortcut = [
-      event.ctrlKey && 'Control',
-      event.altKey && 'Alt',
-      event.shiftKey && 'Shift',
-      event.metaKey && 'Super',
-      key,
-    ]
-      .filter(Boolean)
-      .join('+');
-    if (!validDismissShortcut(shortcut)) {
-      $('#shortcut-hint').textContent =
-        'Combinaison invalide. Ctrl + Maj + F8 reste réservé à la pause.';
-      return;
-    }
-    void saveDismissShortcut(shortcut);
-  },
-  true,
-);
 async function updateSettings(value) {
   const pauseChanged = settings.paused !== value.paused;
   settings = cleanSettings(value);
@@ -1143,6 +1058,7 @@ async function init() {
     settings = info.settings;
     localServer = info.server;
     addresses = info.addresses;
+    native.onHosting(applyHosting);
     mac = info.platform === 'darwin';
     if (mac) $('#pause-shortcut-note').textContent = 'Pause rapide : Cmd + Maj + F8';
     if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
