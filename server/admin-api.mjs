@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { digest } from './room-access.mjs';
 
 // Local administration is explicitly enabled and has no room/session privileges in common.
-export function createAdminHandler({ adminToken, rooms, deleteRoom, json }) {
+export function createAdminHandler({ adminToken, rooms, deleteRoom, json, stats }) {
   if (adminToken && !/^[A-Za-z0-9_-]{43}$/.test(adminToken)) {
     throw new Error(
       'MEMEROOM_ADMIN_TOKEN doit être un secret aléatoire de 32 octets en base64url.',
@@ -10,14 +10,22 @@ export function createAdminHandler({ adminToken, rooms, deleteRoom, json }) {
   }
   const expected = adminToken && Buffer.from(digest(adminToken));
   return (req, res, url) => {
-    if (!expected || !url.pathname.startsWith('/api/admin/rooms')) return false;
+    if (!expected || !url.pathname.startsWith('/api/admin/')) return false;
     const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
     const provided = (req.headers.authorization || '').replace(/^Bearer /, '');
-    if (!local || req.headers.origin || !timingSafeEqual(expected, Buffer.from(digest(provided)))) {
+    if (
+      !local ||
+      req.headers.origin ||
+      req.headers['x-forwarded-for'] ||
+      req.headers.forwarded ||
+      !timingSafeEqual(expected, Buffer.from(digest(provided)))
+    ) {
       json(res, 403, { error: 'Administration refusée.' });
       return true;
     }
-    if (req.method === 'GET' && url.pathname === '/api/admin/rooms') {
+    if (req.method === 'GET' && url.pathname === '/api/admin/status' && stats) {
+      json(res, 200, stats());
+    } else if (req.method === 'GET' && url.pathname === '/api/admin/rooms') {
       json(res, 200, {
         rooms: [...rooms.values()].map((room) => ({
           code: room.code,

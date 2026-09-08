@@ -3,12 +3,12 @@ import { RoomStore } from './room-store.mjs';
 import { MediaStorage } from './media-storage.mjs';
 import { send } from './transport.mjs';
 
-export function createRoomRegistry(dataDir) {
+export function createRoomRegistry(dataDir, diagnostics) {
   const rooms = new Map(),
     sessions = new Map(),
     media = new Map();
   const store = new RoomStore(dataDir);
-  const storage = new MediaStorage();
+  const storage = new MediaStorage(diagnostics);
   const makeRoom = (code, name, access = {}) => ({
     code,
     name,

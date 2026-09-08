@@ -7,6 +7,7 @@ import { createRoomRegistry } from './rooms.mjs';
 import { createRequestPolicy } from './request-policy.mjs';
 import { createHttpHandler } from './http.mjs';
 import { attachWebSocket } from './websocket.mjs';
+import { createDiagnostics } from './diagnostics.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function createRoomServer({
   host = process.env.HOST || '0.0.0.0',
@@ -20,10 +21,12 @@ export function createRoomServer({
   adminToken = process.env.MEMEROOM_ADMIN_TOKEN,
   trustProxy = process.env.MEMEROOM_TRUST_PROXY === '1',
   allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean),
+  diagnostics = createDiagnostics(),
 } = {}) {
-  const registry = createRoomRegistry(dataDir);
+  const registry = createRoomRegistry(dataDir, diagnostics);
   const { rooms, sessions, media, store, storage, makeRoom, removeMedia, emit } = registry;
   const policy = createRequestPolicy(allowedOrigins);
+  const startedAt = Date.now();
   const config = {
     dataDir,
     releasesDir,
@@ -32,6 +35,16 @@ export function createRoomServer({
     mediaTtlMs,
     adminToken,
     cooldownMs,
+    diagnostics,
+    stats: () => ({
+      uptimeMs: Date.now() - startedAt,
+      rooms: rooms.size,
+      sessions: sessions.size,
+      media: media.size,
+      mediaBytes: registry.transfers.totalBytes,
+      uploads: registry.transfers.uploads,
+      errors: diagnostics.snapshot(),
+    }),
   };
   const server = http.createServer(createHttpHandler(registry, policy, config));
   server.requestTimeout = LIMITS.transferTimeoutMs;

@@ -15,7 +15,12 @@ import {
 } from './room-access.mjs';
 import { token, roomCode, send } from './transport.mjs';
 
-export function attachWebSocket(server, registry, policy, { trustProxy, dataDir, cooldownMs }) {
+export function attachWebSocket(
+  server,
+  registry,
+  policy,
+  { trustProxy, dataDir, cooldownMs, diagnostics },
+) {
   const {
     rooms,
     sessions,
@@ -120,7 +125,8 @@ export function attachWebSocket(server, registry, policy, { trustProxy, dataDir,
             });
             try {
               store.add(room);
-            } catch {
+            } catch (error) {
+              diagnostics.error('storage', error);
               throw new Error(
                 'Impossible d’enregistrer la room sur le serveur. Vérifiez son stockage.',
               );
@@ -297,6 +303,8 @@ export function attachWebSocket(server, registry, policy, { trustProxy, dataDir,
         }
         throw new Error('Action inconnue.');
       } catch (error) {
+        if (error.status >= 500 || /^E[A-Z]+$/.test(error.code || ''))
+          diagnostics.error('websocket', error);
         send(ws, {
           replyTo: typeof message?.id === 'string' ? message.id.slice(0, 80) : null,
           ok: false,

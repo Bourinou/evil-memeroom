@@ -10,6 +10,7 @@ import { makeMediaSpace } from './media-capacity.mjs';
 import { listDownloads, serveRelease } from './releases.mjs';
 import { createAdminHandler } from './admin-api.mjs';
 import { token } from './transport.mjs';
+import metadata from '../package.json' with { type: 'json' };
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const staticFiles = new Map([
   ['/', ['public/downloads.html', 'text/html; charset=utf-8']],
@@ -24,7 +25,7 @@ const staticFiles = new Map([
 export function createHttpHandler(
   registry,
   policy,
-  { dataDir, releasesDir, trustProxy, scanMedia, mediaTtlMs, adminToken },
+  { dataDir, releasesDir, trustProxy, scanMedia, mediaTtlMs, adminToken, diagnostics, stats },
 ) {
   const { rooms, sessions, media, storage, transfers, emit, deleteRoom } = registry;
   const { originAllowed, limited } = policy;
@@ -33,7 +34,7 @@ export function createHttpHandler(
     res.end(JSON.stringify(data));
   };
 
-  const handleAdmin = createAdminHandler({ adminToken, rooms, deleteRoom, json });
+  const handleAdmin = createAdminHandler({ adminToken, rooms, deleteRoom, json, stats });
   return async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -70,7 +71,7 @@ export function createHttpHandler(
       if (req.method === 'GET' && url.pathname === '/api/health') {
         json(res, 200, {
           app: 'memeroom',
-          version: '0.6.0',
+          version: metadata.version,
           persistentRooms: !!dataDir,
           features: {
             roomAccess: true,
@@ -221,6 +222,7 @@ export function createHttpHandler(
       }
       json(res, 404, { error: 'Page introuvable.' });
     } catch (error) {
+      if (!error.status || error.status >= 500) diagnostics.error('http', error);
       if (!res.headersSent && !res.destroyed)
         json(res, error.status || 400, {
           error: error.status ? error.message : 'Impossible de traiter la requête.',

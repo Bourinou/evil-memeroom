@@ -7,10 +7,12 @@ import { createTempDirectory } from '../shared/node/temp-directory.cjs';
 import { randomUUID } from 'node:crypto';
 import { LIMITS } from '../shared/protocol.mjs';
 import { detectMedia } from '../shared/media-format.mjs';
+import { createDiagnostics } from './diagnostics.mjs';
 
 export const mediaError = (message, status = 400) => Object.assign(new Error(message), { status });
 export class MediaStorage {
-  constructor() {
+  constructor(diagnostics = createDiagnostics()) {
+    this.diagnostics = diagnostics;
     this.pending = new Set();
   }
   async start() {
@@ -54,7 +56,7 @@ export class MediaStorage {
     if (!asset?.file) return;
     const removing = rm(asset.file, { force: true, maxRetries: 3, retryDelay: 100 })
       .catch((error) => {
-        console.error('Suppression du média impossible :', error.code);
+        this.diagnostics.error('storage', error);
       })
       .finally(() => this.pending.delete(removing));
     this.pending.add(removing);

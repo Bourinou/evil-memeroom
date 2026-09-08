@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      MEMEROOM_ADMIN_TOKEN: ${MEMEROOM_ADMIN_TOKEN:-}
       MEMEROOM_RELEASES_DIR: /releases
       MEMEROOM_TRUST_PROXY: '1'
       MEMEROOM_SCAN_REQUIRED: '1'
