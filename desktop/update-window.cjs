@@ -2,7 +2,9 @@ const path = require('node:path');
 const { runStartupUpdate } = require('./startup-update.cjs');
 
 async function checkStartupUpdate({ app, BrowserWindow, ipcMain }) {
-  const disabled = process.env.MEMEROOM_DISABLE_UPDATES === '1';
+  const disabled =
+    process.env.MEMEROOM_DISABLE_UPDATES === '1' ||
+    require('../package.json').memeroomUpdatesEnabled === false;
   // Mac ZIPs are currently unsigned; Squirrel.Mac requires a signed application.
   if (
     !app.isPackaged ||

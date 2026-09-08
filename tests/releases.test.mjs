@@ -132,6 +132,15 @@ test('release staging verifies both hashes before publishing and rejects reused 
   const downloads = JSON.parse(await readFile(path.join(outputDir, 'downloads.json'), 'utf8'));
   assert.equal(downloads.windows.filename, exe);
   assert.equal(downloads.linux.filename, appimage);
+  const macEntry = { version: '0.3.0', filename: 'MemeRoom-0.3.0-Mac-arm64.zip' };
+  await writeFile(
+    path.join(outputDir, 'downloads.json'),
+    JSON.stringify({ ...downloads, macArm64: macEntry }),
+  );
+  await stageReleases({ version: '0.3.0', windowsDir, outputDir });
+  const partial = JSON.parse(await readFile(path.join(outputDir, 'downloads.json'), 'utf8'));
+  assert.deepEqual(partial.linux, downloads.linux);
+  assert.deepEqual(partial.macArm64, macEntry);
   await build(linuxDir, appimage, 'latest-linux.yml', 'recompiled');
   await assert.rejects(stageReleases(options), /immuable/);
   assert.equal(await readFile(path.join(outputDir, appimage), 'utf8'), 'linux');

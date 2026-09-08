@@ -14,12 +14,21 @@ export async function sha512(file) {
 
 export async function stageReleases({ version, windowsDir, linuxDir, macDir, outputDir }) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Version invalide.');
-  const plans = [],
-    downloads = {};
+  if (!windowsDir && !linuxDir && !macDir) throw new Error('Sélectionnez au moins une plateforme.');
+  const plans = [];
+  let downloads = {};
+  try {
+    downloads = JSON.parse(await readFile(path.join(outputDir, 'downloads.json'), 'utf8'));
+    if (!downloads || typeof downloads !== 'object' || Array.isArray(downloads))
+      throw new Error('Manifest invalide.');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   for (const [platform, directory, metadata, filename] of [
     ['windows', windowsDir, 'latest.yml', `MemeRoom-Setup-${version}.exe`],
     ['linux', linuxDir, 'latest-linux.yml', `MemeRoom-${version}-Linux-x86_64.AppImage`],
   ]) {
+    if (!directory) continue;
     const manifest = yaml.load(await readFile(path.join(directory, metadata), 'utf8'));
     const entry = manifest?.files?.find((file) => file.url === filename);
     const source = path.join(directory, filename);
@@ -61,7 +70,7 @@ export async function stageReleases({ version, windowsDir, linuxDir, macDir, out
     }
     plans.push({ directory: macDir, binaries });
   }
-  // Validate both builds before changing the directory served to clients.
+  // Validate every selected build before changing the directory served to clients.
   await mkdir(outputDir, { recursive: true });
   for (const plan of plans)
     for (const name of plan.binaries) {
@@ -103,9 +112,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   const result = await stageReleases({
     version,
-    windowsDir: path.resolve(process.argv[2] || path.join(root, `release/build-${version}`)),
-    linuxDir: path.resolve(process.argv[3] || path.join(root, 'release')),
-    macDir: path.resolve(process.argv[4] || path.join(root, 'release/mac')),
+    windowsDir:
+      process.argv[2] === '-'
+        ? null
+        : path.resolve(process.argv[2] || path.join(root, `release/build-${version}`)),
+    linuxDir:
+      process.argv[3] === '-' ? null : path.resolve(process.argv[3] || path.join(root, 'release')),
+    macDir:
+      process.argv[4] === '-'
+        ? null
+        : path.resolve(process.argv[4] || path.join(root, 'release/mac')),
     outputDir: path.join(root, 'releases'),
   });
   console.log('Téléchargements et mises à jour prêts dans releases/', result);
