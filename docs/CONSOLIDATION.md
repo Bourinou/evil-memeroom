@@ -7,7 +7,7 @@ Contraintes conservées : fonctionnalités et interface identiques, licence CC B
 - [x] Contrats vérifiés automatiquement.
 - [x] Mesures reproductibles de CPU, mémoire, transferts et latence.
 - [x] Validation locale Windows/Linux, installation Windows et antivirus réel.
-- [ ] Exécution de la CI GitHub, notamment sur un Mac réel : configuration prête, publication de la branche encore bloquée.
+- [ ] CI GitHub entièrement verte : tests Node sur les trois systèmes, ClamAV et parcours Mac exécutés ; correction du téléchargement initial d’Electron dans le job Linux en cours de validation.
 
 ## Journal TDD
 
@@ -28,11 +28,11 @@ Les sentinelles de `tests/contracts.ts` échouent d’abord parce que les mauvai
 | Ancien profil Windows 0.5.0 → nouveau programme 0.6.0 | Réglages, pseudo, code de room, droits du gestionnaire, reconnexion, message enregistré avec image, réimport et diffusion conservés |
 | Installation Windows réelle | NSIS installé, exécuté, réinstallé et désinstallé avec l’identité distincte « MemeRoom Validation » |
 | AppImage Linux | Construite ; reprise d’un profil et diffusion validées avec son programme empaqueté |
-| Archives Mac Intel et Apple Silicon | Construites sous Linux ; 14 liens symboliques conservés dans chaque archive ; exécution et comportement sur Mac non validés localement |
+| Archives Mac Intel et Apple Silicon | Construites sous Linux ; 14 liens symboliques conservés dans chaque archive ; parcours Electron, reprise de profil et compilation également exécutés sur le Mac de la CI |
 | Distribution Windows/Linux | Vrais binaires téléchargés par electron-updater, empreintes vérifiées, version courante ignorée, binaire corrompu refusé, téléchargement tardif empêché après annulation |
 | ClamAV 1.4, configuration du dépôt | PNG sain accepté ; signature EICAR standard refusée par le moteur ; format EICAR brut refusé par HTTP ; antivirus indisponible → HTTP 503 et aucune publication du fichier |
 
-Les nouveaux artefacts restent dans `.test-artifacts/` et les dossiers WSL temporaires. Aucune release publique, version du projet ou installation MemeRoom existante n’a été remplacée. Les bibliothèques NSS, NSPR et ALSA nécessaires aux essais Linux ont été ajoutées à Ubuntu WSL. Le conteneur antivirus porte l’identité de test `memeroom-consolidation-clamav`.
+Les nouveaux artefacts restent dans `.test-artifacts/` et les dossiers WSL temporaires. Aucune release publique, version du projet ou installation MemeRoom existante n’a été remplacée. Les bibliothèques NSS, NSPR et ALSA nécessaires aux essais Linux ont été ajoutées à Ubuntu WSL. Le conteneur antivirus `memeroom-consolidation-clamav` a été arrêté et supprimé après les tests.
 
 ## Mesures reproductibles
 
@@ -56,4 +56,4 @@ Ces mesures portent sur la boucle locale, les transferts et les caches ; elles e
 
 ## Dernière validation externe
 
-La CI prépare les vérifications Node et Electron sur Windows, Linux et macOS, la compilation des livrables, l’installation Windows isolée et un job avec ClamAV réel. Son exécution n’est pas confirmée tant que la branche n’est pas disponible sur GitHub. L’accès SSH local au dépôt a échoué et le contrôle automatique d’approbation a refusé l’essai de publication HTTPS sans accord explicite. La compilation croisée des ZIP Mac ne remplace pas cette validation native.
+La branche a été publiée par HTTPS après accord explicite. La [première exécution GitHub](https://github.com/Rose-Roubaud/memeroom/actions/runs/34263575340) confirme les tests Node sur les trois systèmes, ClamAV réel et les parcours natifs Mac. Elle détecte que le binaire d’Electron 44 est téléchargé au premier usage : le job Linux doit exécuter son installateur avant de configurer le sandbox. La correction conserve le sandbox et ajoute cette étape explicite, sans changer l’application. Le [suivi de la branche](https://github.com/Rose-Roubaud/memeroom/actions?query=branch%3Acodex%2Frefonte-maintenable) fournit les résultats ultérieurs.
