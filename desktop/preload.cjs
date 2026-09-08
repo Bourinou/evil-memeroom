@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('memeroom', {
   info: () => ipcRenderer.invoke('app:info'),
+  preparePreview: (id, asset, server) => ipcRenderer.invoke('preview:prepare', id, asset, server),
+  releasePreview: (id) => ipcRenderer.send('preview:release', id),
   saveSettings: (value) => ipcRenderer.invoke('settings:save', value),
   recordShortcut: (active) => ipcRenderer.invoke('shortcut:record', active),
   saveDismissShortcut: (value) => ipcRenderer.invoke('shortcut:save', value),

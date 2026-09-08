@@ -2,20 +2,13 @@ const { createWriteStream, createReadStream } = require('node:fs');
 const { open, rm } = require('node:fs/promises');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
-const MAX_BYTES = 1024 ** 3;
-const TRANSFER_MS = 30 * 60 * 1000;
+const { LIMITS } = require('../shared/limits.mjs');
+const { normalizeServer } = require('../shared/client-state.mjs');
+const MAX_BYTES = LIMITS.uploadBytes;
+const TRANSFER_MS = LIMITS.transferTimeoutMs;
 
 function assetURL(asset, server) {
-  const base = new URL(server);
-  if (
-    !['http:', 'https:'].includes(base.protocol) ||
-    base.username ||
-    base.password ||
-    base.pathname !== '/' ||
-    base.search ||
-    base.hash
-  )
-    throw new Error('Serveur invalide.');
+  const base = new URL(normalizeServer(server));
   if (
     !/^[A-Za-z0-9_-]{32}$/.test(asset?.id) ||
     asset.url !== `/media/${asset.id}` ||
@@ -73,17 +66,8 @@ async function downloadAsset(asset, server, destination, signal) {
   }
 }
 async function uploadAsset(file, asset, server, token) {
-  const base = new URL(server);
-  if (
-    !['http:', 'https:'].includes(base.protocol) ||
-    base.username ||
-    base.password ||
-    base.pathname !== '/' ||
-    base.search ||
-    base.hash ||
-    !/^[A-Za-z0-9_-]{32}$/.test(token)
-  )
-    throw new Error('Connexion invalide.');
+  const base = new URL(normalizeServer(server));
+  if (!/^[A-Za-z0-9_-]{32}$/.test(token)) throw new Error('Connexion invalide.');
   const stream = createReadStream(file);
   try {
     const response = await fetch(new URL('/api/media', base), {

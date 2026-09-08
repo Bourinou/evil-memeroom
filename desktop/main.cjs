@@ -9,13 +9,17 @@ const {
   globalShortcut,
   session,
   dialog,
+  net,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
 const { CONTROL_URL, installControlPage } = require('./control-page.cjs');
-const { downloadAsset } = require('./media-files.cjs');
+const { MediaCache } = require('./media-cache.cjs');
+const { createPlayback } = require('./playback.cjs');
+const { createPreviewMedia } = require('./preview-media.cjs');
+const { createAtomicWriter } = require('../shared/node/atomic-writer.cjs');
 const { Presets } = require('./presets.cjs');
 const { createOverlayLayer } = require('./overlay-layer.cjs');
 
@@ -35,17 +39,11 @@ let control,
   settings,
   clientState,
   protocol,
-  quitting = false,
-  hideTimer,
-  lastShown = 0,
-  generation = 0;
-const seen = new Set();
+  quitting = false;
 let dismissShortcut = '',
   shortcutError = '',
   shortcutCaptureTimer;
-let playbackAbort, playbackDirectory, presets, overlayLayer;
-let playbackAutomatic = false,
-  playbackDuration = 0;
+let playback, mediaCache, previewMedia, presets, overlayLayer;
 function finishShortcutCapture() {
   clearTimeout(shortcutCaptureTimer);
   globalShortcut.setSuspended(false);
@@ -81,38 +79,16 @@ function secureWindow(window) {
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
 }
 function clearOverlay() {
-  generation++;
-  clearTimeout(hideTimer);
-  playbackAbort?.abort();
-  playbackAbort = null;
-  if (playbackDirectory) {
-    const directory = playbackDirectory;
-    playbackDirectory = null;
-    void fs
-      .rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
-      .catch(() => {});
-  }
-  if (overlay && !overlay.isDestroyed()) {
-    overlay.webContents.send('overlay:clear');
-    overlayLayer?.hide();
-  }
+  playback?.clear();
 }
 function sendSettings() {
   if (control && !control.isDestroyed()) control.webContents.send('settings:changed', settings);
 }
-let saving = Promise.resolve();
-let clientSaving = Promise.resolve();
+const settingsWriter = createAtomicWriter(settingsPath());
+const clientWriter = createAtomicWriter(clientPath());
 async function saveClient(value) {
   clientState = protocol.cleanClientState(value);
-  const snapshot = JSON.stringify(clientState, null, 2);
-  clientSaving = clientSaving
-    .catch(() => {})
-    .then(async () => {
-      await fs.mkdir(path.dirname(clientPath()), { recursive: true });
-      await fs.writeFile(clientPath() + '.tmp', snapshot, { mode: 0o600 });
-      await fs.rename(clientPath() + '.tmp', clientPath());
-    });
-  await clientSaving;
+  await clientWriter.save(clientState);
   return clientState;
 }
 async function saveSettings(value, applyShortcut = false) {
@@ -127,17 +103,10 @@ async function saveSettings(value, applyShortcut = false) {
   if (settings.paused) clearOverlay();
   else if (overlay && !overlay.isDestroyed())
     overlay.webContents.send('overlay:volume', settings.volume);
-  const snapshot = JSON.stringify(settings, null, 2);
-  saving = saving
-    .catch(() => {})
-    .then(async () => {
-      await fs.mkdir(path.dirname(settingsPath()), { recursive: true });
-      await fs.writeFile(settingsPath() + '.tmp', snapshot);
-      await fs.rename(settingsPath() + '.tmp', settingsPath());
-    });
+  const persisted = settingsWriter.save(settings);
   sendSettings();
   updateTray();
-  await saving;
+  await persisted;
   return settings;
 }
 function updateTray() {
@@ -186,79 +155,6 @@ function positionOverlay() {
   }
   overlay.setBounds({ x, y, width, height });
 }
-async function displayReaction(payload, test = false) {
-  if (settings.paused) return { shown: false, reason: 'paused' };
-  const now = Date.now();
-  if (!test && (now - lastShown < settings.cooldown * 1000 || seen.has(payload?.id)))
-    return { shown: false, reason: 'cooldown' };
-  if (!payload || typeof payload !== 'object') throw new Error('Réaction invalide.');
-  const server = protocol.normalizeServer(payload.server);
-  const media = new Map();
-  for (const item of [payload.media, payload.audio].filter(Boolean)) {
-    if (
-      !/^[A-Za-z0-9_-]{32}$/.test(item.id) ||
-      item.url !== `/media/${item.id}` ||
-      !['image', 'video', 'audio'].includes(item.kind)
-    )
-      throw new Error('Média invalide.');
-    media.set(item.id, { ...item, name: protocol.cleanText(item.name, 80) });
-  }
-  const reaction = protocol.validateReaction(
-    { ...payload, mediaId: payload.media?.id, audioId: payload.audio?.id },
-    media,
-  );
-  const automatic = protocol.hasTimedMedia(reaction);
-  const delay = Number.isFinite(payload.delay) ? Math.max(0, Math.min(payload.delay, 1000)) : 0;
-  lastShown = now;
-  if (typeof payload.id === 'string') {
-    seen.add(payload.id.slice(0, 80));
-    if (seen.size > 100) seen.delete(seen.values().next().value);
-  }
-  clearOverlay();
-  const currentGeneration = generation;
-  const abort = new AbortController();
-  playbackAbort = abort;
-  if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-  if (generation !== currentGeneration || settings.paused)
-    return { shown: false, reason: 'cancelled' };
-  let directory;
-  try {
-    if (reaction.media || reaction.audio) {
-      directory = await fs.mkdtemp(path.join(os.tmpdir(), 'memeroom-playback-'));
-      if (generation !== currentGeneration || abort.signal.aborted) throw new Error('cancelled');
-      playbackDirectory = directory;
-      for (const key of ['media', 'audio'])
-        if (reaction[key]) {
-          const file = path.join(directory, key);
-          await downloadAsset(reaction[key], server, file, abort.signal);
-          reaction[key].playbackURL = pathToFileURL(file).href;
-        }
-    }
-    if (generation !== currentGeneration || settings.paused)
-      return { shown: false, reason: 'cancelled' };
-    positionOverlay();
-    playbackAutomatic = automatic;
-    playbackDuration = reaction.duration;
-    overlay.webContents.send('overlay:show', {
-      ...reaction,
-      server,
-      playbackId: currentGeneration,
-      volume: settings.volume,
-      sender: protocol.cleanText(payload.sender?.name, 24),
-    });
-    hideTimer = setTimeout(clearOverlay, 65000);
-  } catch (error) {
-    if (directory)
-      await fs
-        .rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
-        .catch(() => {});
-    if (abort.signal.aborted || generation !== currentGeneration)
-      return { shown: false, reason: 'cancelled' };
-    clearOverlay();
-    throw error;
-  }
-  return { shown: true };
-}
 
 if (singleInstance)
   app
@@ -303,7 +199,20 @@ if (singleInstance)
       }
       baseUrl = `http://127.0.0.1:${address.port}`;
       const controlSession = session.fromPartition('memeroom-control');
-      installControlPage(controlSession);
+      mediaCache = new MediaCache({ root: process.env.MEMEROOM_TEMP_DIR });
+      previewMedia = createPreviewMedia(mediaCache, async (file, request, mime) => {
+        const response = await net.fetch(pathToFileURL(file).href, { headers: request.headers });
+        const headers = new Headers(response.headers);
+        headers.set('Content-Type', mime || 'application/octet-stream');
+        headers.set('Cache-Control', 'no-store');
+        headers.set('X-Content-Type-Options', 'nosniff');
+        if (request.method === 'HEAD') await response.body?.cancel();
+        return new Response(request.method === 'HEAD' ? null : response.body, {
+          status: response.status,
+          headers,
+        });
+      });
+      installControlPage(controlSession, previewMedia);
       for (const currentSession of [session.defaultSession, controlSession]) {
         currentSession.setPermissionRequestHandler((_contents, _permission, callback) =>
           callback(false),
@@ -357,6 +266,22 @@ if (singleInstance)
         },
       });
       overlayLayer = createOverlayLayer(overlay);
+      playback = createPlayback({
+        protocol,
+        cache: mediaCache,
+        getSettings: () => settings,
+        show(value) {
+          positionOverlay();
+          overlay.webContents.send('overlay:show', value);
+        },
+        hide() {
+          if (!overlay.isDestroyed()) {
+            overlay.webContents.send('overlay:clear');
+            overlayLayer.hide();
+          }
+        },
+        reveal: () => overlayLayer.show(),
+      });
       secureWindow(control);
       secureWindow(overlay);
       ipcMain.handle('app:info', (event) => {
@@ -377,6 +302,13 @@ if (singleInstance)
             label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}`,
           })),
         };
+      });
+      ipcMain.handle('preview:prepare', (event, id, asset, server) => {
+        if (!trustedControl(event)) throw new Error('Accès refusé.');
+        return previewMedia.prepare(id, asset, server);
+      });
+      ipcMain.on('preview:release', (event, id) => {
+        if (trustedControl(event)) previewMedia.release(id);
       });
       ipcMain.handle('client:save', (event, value) => {
         if (!trustedControl(event)) throw new Error('Accès refusé.');
@@ -420,11 +352,11 @@ if (singleInstance)
       });
       ipcMain.handle('overlay:show', (event, value) => {
         if (!trustedControl(event)) throw new Error('Accès refusé.');
-        return displayReaction(value);
+        return playback.display(value);
       });
       ipcMain.handle('overlay:test', (event) => {
         if (!trustedControl(event)) throw new Error('Accès refusé.');
-        return displayReaction(
+        return playback.display(
           {
             server: baseUrl,
             duration: 4,
@@ -438,29 +370,17 @@ if (singleInstance)
         if (trustedControl(event)) clearOverlay();
       });
       ipcMain.on('overlay:done', (event, id) => {
-        if (trustedOverlay(event) && id === generation) clearOverlay();
+        if (trustedOverlay(event)) playback.done(id);
       });
       ipcMain.on('overlay:ready', (event, id) => {
-        if (trustedOverlay(event) && id === generation && !settings.paused) {
-          clearTimeout(hideTimer);
-          overlayLayer.show();
-          hideTimer = setTimeout(
-            clearOverlay,
-            playbackAutomatic ? protocol.LIMITS.playbackStallMs : playbackDuration * 1000 + 250,
-          );
-        }
+        if (trustedOverlay(event)) playback.ready(id);
       });
       ipcMain.on('overlay:progress', (event, id) => {
-        if (trustedOverlay(event) && id === generation && playbackAutomatic) {
-          clearTimeout(hideTimer);
-          hideTimer = setTimeout(clearOverlay, protocol.LIMITS.playbackStallMs);
-        }
+        if (trustedOverlay(event)) playback.progress(id);
       });
       ipcMain.on('overlay:error', (event, message, id) => {
-        if (trustedOverlay(event) && id === generation) {
-          clearOverlay();
+        if (trustedOverlay(event) && playback.done(id))
           control.webContents.send('overlay:error', protocol.cleanText(message, 160));
-        }
       });
       ipcMain.handle('app:minimize', (event) => {
         if (trustedControl(event)) {
@@ -483,6 +403,7 @@ if (singleInstance)
       });
       control.on('blur', finishShortcutCapture);
       control.webContents.on('render-process-gone', () => {
+        previewMedia.clear();
         finishShortcutCapture();
         clearOverlay();
         control.reload();
@@ -529,10 +450,27 @@ app.on('activate', () => {
     control.focus();
   }
 });
-app.on('before-quit', () => {
+let shutdown,
+  shutdownComplete = false;
+app.on('before-quit', (event) => {
   quitting = true;
+  if (shutdownComplete || !playback) return;
+  event.preventDefault();
+  if (shutdown) return;
   clearOverlay();
+  previewMedia?.clear();
   globalShortcut.unregisterAll();
-  if (localServer) void localServer.stop();
+  shutdown = Promise.allSettled([
+    settingsWriter.flush(),
+    clientWriter.flush(),
+    mediaCache?.close(),
+    localServer?.stop(),
+  ]).then((results) => {
+    for (const result of results)
+      if (result.status === 'rejected')
+        console.error('Arrêt incomplet :', result.reason?.code || 'IO_ERROR');
+    shutdownComplete = true;
+    app.quit();
+  });
 });
 app.on('window-all-closed', () => app.quit());

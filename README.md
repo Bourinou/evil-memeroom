@@ -57,7 +57,7 @@ Les rooms et la dernière connexion sont enregistrées automatiquement. Retirer 
 | Réglages | Dossier utilisateur de l’app, `preferences.json` |
 | Messages enregistrés et fichiers | Dossier utilisateur de l’app, `saved-messages/` ; jusqu’à suppression explicite |
 | Fichiers de la room | Disque temporaire du serveur ; expiration après 10 minutes ou éviction si plein |
-| Copie en cours de lecture | Disque temporaire du participant ; supprimée à la fermeture de l’overlay |
+| Cache de lecture | Disque temporaire du participant, partagé par aperçu et overlay ; 2 Gio maximum, expiration après 10 min, nettoyage à l’arrêt |
 
 Une bibliothèque conserve au maximum 30 fichiers et 2 Go par room ; 8 Go au total. Un import valide peut supprimer les fichiers les plus anciens pour libérer de la place. Les fichiers invalides ou refusés par l’antivirus ne sont pas publiés et ne déclenchent pas d’éviction. Il peut y avoir quatre imports simultanés au maximum sur le serveur, un par participant.
 
@@ -79,7 +79,7 @@ Cinq tentatives de mot de passe par adresse et par room sont autorisées sur cin
 - Linux : `releases/MemeRoom-0.6.0-Linux-x86_64.AppImage`. Autoriser l’exécution, puis lancer le fichier. L’overlay utilise X11/XWayland. Sur Arch, les dépendances usuelles sont `fuse2 gtk3 nss alsa-lib xorg-xwayland`. Sans FUSE, utiliser `--appimage-extract-and-run`.
 - Mac : choisir le ZIP Apple Silicon ou Intel, le décompresser, puis ouvrir `Installer MemeRoom.command` à côté de `MemeRoom.app`. Voir les limites et la procédure de signature Apple dans [DEPLOYER.md](DEPLOYER.md).
 
-Prérequis de développement : Node.js 22.12 ou supérieur, et un bureau compatible Electron.
+Prérequis de développement : Node.js 24 LTS (voir `.nvmrc`), et un bureau compatible Electron.
 
 ```powershell
 npm ci

@@ -10,6 +10,7 @@ import {
 } from '../../shared/protocol.mjs';
 import { Connection } from './connection.mjs';
 import { mountReaction } from '../../shared/render/media-view.mjs';
+import { preparePreview } from './preview-source.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const native = window.memeroom;
@@ -817,6 +818,7 @@ $('#preview-play').addEventListener('click', () => {
   preview?.destroy();
   $('#preview-loading').hidden = false;
   preview = mountReaction($('#large-preview'), currentReaction(), {
+    prepareSource: preparePreview,
     volume: settings.volume,
     autoplay: true,
     onReady: () => {

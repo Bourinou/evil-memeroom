@@ -15,6 +15,10 @@ const files = new Map([
   ['/shared/render/reaction.css', ['shared/render/reaction.css', 'text/css; charset=utf-8']],
   ['/shared/base.css', ['shared/base.css', 'text/css; charset=utf-8']],
   ['/connection.mjs', ['desktop/renderer/connection.mjs', 'text/javascript; charset=utf-8']],
+  [
+    '/preview-source.mjs',
+    ['desktop/renderer/preview-source.mjs', 'text/javascript; charset=utf-8'],
+  ],
   ['/shared/protocol.mjs', ['shared/protocol.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/limits.mjs', ['shared/limits.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/text.mjs', ['shared/text.mjs', 'text/javascript; charset=utf-8']],
@@ -27,13 +31,14 @@ const files = new Map([
 const csp =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: http: https:; media-src 'self' blob: http: https:; connect-src http: https: ws: wss:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
-function installControlPage(controlSession) {
+function installControlPage(controlSession, previewMedia) {
   controlSession.protocol.handle('http', async (request) => {
     const url = new URL(request.url);
     if (url.origin !== new URL(CONTROL_URL).origin) {
       // Room API requests still use the network, with their body and headers intact.
       return controlSession.fetch(request, { bypassCustomProtocolHandlers: true });
     }
+    if (previewMedia && url.pathname.startsWith('/playback/')) return previewMedia.respond(request);
     const file = files.get(url.pathname);
     if (!file || !['GET', 'HEAD'].includes(request.method))
       return new Response('Page introuvable.', { status: 404 });

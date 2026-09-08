@@ -37,3 +37,11 @@ Deux tests écrits avant le module de gestion des temporaires valident la récup
 Les tests de résolution des imports privés et des ressources HTML ont précédé le déplacement. La télécommande vit dans `desktop/renderer/`, le site dans `public/`, le rendu commun dans `shared/render/`. Le contrat partagé reste accessible par la façade `shared/protocol.mjs`, avec des modules distincts pour les réglages, limites, réactions, sous-titres et favoris. Le serveur assemble désormais les transports HTTP/WebSocket, la politique des requêtes et le registre des rooms.
 
 Les 46 tests Node passent (un test de lien symbolique ignoré sous Windows). Les scénarios Electron apparence et lecture passent. Le scénario rooms a échoué pendant des modifications concurrentes aux fichiers, puis passe entièrement à sa réexécution sur les fichiers stables. Les prochaines suites natives seront exécutées sans modifier les sources en parallèle.
+
+### Lecture et écritures
+
+Six tests de cache, trois tests de lecture, deux tests d’URL privée et deux tests d’écriture sont ajoutés avant les composants correspondants. Ils passent après implémentation. Un test supplémentaire reproduit ensuite une sauvegarde déclenchée au moment de la résolution précédente qui restait en attente : le correctif la reprogramme systématiquement.
+
+L’aperçu complet et l’overlay utilisent le même téléchargement borné sur disque, sans conversion intégrale en Blob. Le cache réserve 2 Gio maximum, conserve les lecteurs actifs et expire les copies libres. La lecture est extraite du processus principal ; l’arrêt attend cache, serveur et écritures. Les réactions sans sous-titres ne démarrent plus de boucle d’animation.
+
+La suite Electron complète passe avec ces composants : apparence, lecture (dont aperçu vidéo + audio et sous-titres tardifs) et reconnexion après redémarrage.

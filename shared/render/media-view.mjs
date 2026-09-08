@@ -11,6 +11,7 @@ export function mountReaction(
     onDone = () => {},
     onError = () => {},
     onProgress = () => {},
+    prepareSource,
   } = {},
 ) {
   const root = document.createElement('div');
@@ -18,7 +19,7 @@ export function mountReaction(
   root.hidden = autoplay;
   const players = [],
     visuals = [],
-    urls = [],
+    sources = [],
     abort = new AbortController();
   let mutedVideo,
     timer,
@@ -92,19 +93,14 @@ export function mountReaction(
     let url = asset.playbackURL || new URL(asset.url, reaction.server).href;
     // Overlay file URLs are supplied by the main process after a complete download.
     if (autoplay && !asset.playbackURL) {
-      const response = await fetch(url, {
-        signal: AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]),
-      });
-      if (!response.ok) throw new Error('Fichier indisponible ou expiré.');
-      if (Number(response.headers.get('content-length')) > LIMITS.uploadBytes) {
-        await response.body.cancel();
-        throw new Error('Fichier trop volumineux.');
+      if (!prepareSource) throw new Error('Source de lecture indisponible.');
+      const source = await prepareSource(asset, reaction.server, abort.signal);
+      if (dead || completed) {
+        source.release();
+        return;
       }
-      const blob = await response.blob();
-      if (dead || completed) return;
-      if (blob.size > LIMITS.uploadBytes) throw new Error('Fichier trop volumineux.');
-      url = URL.createObjectURL(blob);
-      urls.push(url);
+      url = source.url;
+      sources.push(source);
     }
     if (dead || completed) return;
     await new Promise((resolve, reject) => {
@@ -184,7 +180,7 @@ export function mountReaction(
       caption.hidden = !caption.textContent;
       animation = requestAnimationFrame(tick);
     };
-    tick();
+    if (reaction.subtitles?.length) tick();
   }
   void start().catch(fail);
   return {
@@ -203,7 +199,7 @@ export function mountReaction(
         element.removeAttribute('src');
         if (players.includes(element)) element.load();
       }
-      for (const url of urls) URL.revokeObjectURL(url);
+      for (const source of sources) source.release();
       root.remove();
     },
   };
