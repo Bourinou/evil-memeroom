@@ -29,11 +29,12 @@ export function notify(message, error = false) {
 }
 
 export function bindDialogs() {
-  document
-    .querySelectorAll('[data-close]')
-    .forEach((button) =>
-      button.addEventListener('click', () => document.getElementById(button.dataset.close).close()),
-    );
+  for (const button of document.querySelectorAll('button[data-close]')) {
+    button.addEventListener('click', () => {
+      const dialog = document.getElementById(button.getAttribute('data-close'));
+      if (dialog instanceof HTMLDialogElement) dialog.close();
+    });
+  }
   for (const dialog of document.querySelectorAll('dialog')) {
     let outsideDown = false;
     const outside = (event) => {

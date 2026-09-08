@@ -10,7 +10,10 @@ export function hasTimedMedia(reaction) {
   );
 }
 
-/** @param {import('./contracts').ReactionInput} input */
+/**
+ * @param {import('./contracts.js').ReactionInput} input
+ * @param {Map<string, import('./contracts.js').MediaAsset>} media
+ */
 export function validateReaction(input, media) {
   if (!input || typeof input !== 'object') throw new Error('Contenu invalide.');
   const asset = typeof input.mediaId === 'string' ? media.get(input.mediaId) : null;
@@ -42,6 +45,8 @@ export function validateReaction(input, media) {
   };
 }
 
+/** @param {import('./contracts.js').MediaAsset} asset
+ * @returns {import('./contracts.js').MediaAsset} */
 export function publicMedia(asset) {
   return {
     id: asset.id,

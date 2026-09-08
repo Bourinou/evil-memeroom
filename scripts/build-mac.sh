@@ -10,6 +10,11 @@ mkdir -p "$source_dir/release/mac"
 node "$source_dir/scripts/prepare-build.mjs" "$build_dir"
 cd -- "$build_dir"
 npm ci --ignore-scripts --no-audit --no-fund
+npm run check
+npm run check:types
+npm run lint
+npm run format:check
+npm test
 if [[ "${1:-}" == --signed ]]; then
   [[ "$(uname -s)" == Darwin ]] || { echo 'La signature Apple nécessite macOS.' >&2; exit 1; }
   npm exec -- electron-builder --config scripts/mac-release.cjs --mac zip --arm64 --x64 --publish never --config.directories.output=release/mac

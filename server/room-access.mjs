@@ -1,6 +1,7 @@
 import { randomBytes, createHash, createHmac, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 
+/** @type {(password: string, salt: string, length: number, options: import('node:crypto').ScryptOptions) => Promise<Buffer>} */
 const derive = promisify(scrypt);
 let activeHashes = 0;
 export const secret = () => randomBytes(32).toString('base64url');

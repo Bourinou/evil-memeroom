@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -25,12 +25,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run check:types
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
   desktop:
-    runs-on: windows-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -40,5 +45,56 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run test:desktop
-      - run: npm run test:focused
+      - if: runner.os == 'Linux'
+        run: |
+          npx playwright install-deps chromium
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      - if: runner.os != 'Linux'
+        run: npm run test:desktop && npm run test:focused && npm run test:profile
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a sh -c 'npm run test:desktop && npm run test:focused && npm run test:profile'
+      - if: runner.os == 'Windows'
+        run: npx electron-builder --config scripts/validation-installer.cjs --win nsis --x64 --publish never
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/install-windows.ps1
+      - if: runner.os == 'Linux'
+        run: bash scripts/build-linux.sh
+      - if: runner.os == 'macOS'
+        run: bash scripts/build-mac.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: |
+            .test-artifacts/*-results.json
+            .test-artifacts/*.png
+          if-no-files-found: ignore
+  antivirus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Démarrer le moteur ClamAV réel
+        run: |
+          docker run -d --name memeroom-test-clamav --memory 4g -p 127.0.0.1:3310:3310 -v "$PWD/deploy/clamd.conf:/etc/clamav/clamd.conf:ro" clamav/clamav:1.4_base
+          for attempt in $(seq 1 120); do
+            if docker exec memeroom-test-clamav clamdscan --ping 1; then exit 0; fi
+            sleep 5
+          done
+          docker logs memeroom-test-clamav
+          exit 1
+      - run: npm run test:antivirus
+        env:
+          CLAMAV_HOST: 127.0.0.1
+          CLAMAV_PORT: '3310'
+      - if: always()
+        run: docker logs memeroom-test-clamav && docker rm -f memeroom-test-clamav

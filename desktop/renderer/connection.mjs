@@ -8,6 +8,9 @@ export const isNetworkError = (error) =>
   ].includes(error?.code);
 
 export class Connection {
+  /** @param {string} origin
+   * @param {(event: import('../../shared/contracts.js').RoomEvent) => void} onEvent
+   * @param {() => void} onClose */
   constructor(origin, onEvent, onClose) {
     this.origin = origin;
     this.onEvent = onEvent;
@@ -57,7 +60,7 @@ export class Connection {
         'open',
         () => {
           clearTimeout(timer);
-          resolve();
+          resolve(undefined);
         },
         { once: true },
       );
@@ -72,7 +75,13 @@ export class Connection {
     });
     this.heartbeat = setInterval(() => this.request('ping').catch(() => this.ws.close()), 20000);
   }
-  request(type, data = {}) {
+  /**
+   * @template {keyof import('../../shared/contracts.js').RoomRequests} T
+   * @param {T} type
+   * @param {import('../../shared/contracts.js').RoomRequests[T]} [data]
+   * @returns {Promise<import('../../shared/contracts.js').RoomReplies[T]>}
+   */
+  request(type, data) {
     if (this.ws?.readyState !== WebSocket.OPEN)
       return Promise.reject(networkError('NETWORK_DISCONNECTED', 'Serveur déconnecté.'));
     const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>

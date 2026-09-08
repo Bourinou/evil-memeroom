@@ -18,6 +18,10 @@
     "test:desktop": "node scripts/test-desktop.mjs",
     "test:focused": "node scripts/test-desktop.mjs --focused",
     "check": "node scripts/check.mjs",
+    "check:types": "tsc --noEmit",
+    "test:antivirus": "node --test tests/antivirus.e2e.mjs",
+    "test:profile": "node tests/profile.e2e.mjs",
+    "bench": "node scripts/benchmark.mjs",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{mjs,cjs,js,ts,json,css,html,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{mjs,cjs,js,ts,json,css,html,yaml,yml}\"",
@@ -36,6 +40,8 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "@types/ws": "8.18.1",
     "electron": "^44.2.0",
     "electron-builder": "^26.15.3",
     "eslint": "10.10.0",
@@ -44,6 +50,7 @@
     "js-yaml": "4.3.2",
     "playwright": "^1.63.0",
     "prettier": "3.9.6",
+    "typescript": "7.0.2",
     "yazl": "3.3.1"
   },
   "build": {

@@ -6,7 +6,7 @@ MemeRoom comporte trois parties : un serveur de rooms, une télécommande dans l
 | --- | --- |
 | `server/` | `index.mjs` assemble HTTP (`http.mjs`), WebSocket (`websocket.mjs`), registre des rooms (`rooms.mjs`) et politique des requêtes ; stockage, accès et inspection restent dans leurs modules dédiés |
 | `desktop/` | `main.cjs` assemble fenêtres et IPC ; `playback.cjs` pilote la lecture ; `media-cache.cjs` partage les téléchargements ; `preview-media.cjs` limite les URL privées aux aperçus actifs ; `presets.cjs` conserve les messages |
-| `desktop/renderer/` | Télécommande : HTML, styles, composition et connexion ; chargée par la liste autorisée de `control-page.cjs` |
+| `desktop/renderer/` | `app.mjs` assemble les modules et réglages ; `rooms-ui.mjs` gère les formulaires, `room-session.mjs` la connexion sans DOM, `composer-ui.mjs` les médias et `presets-ui.mjs` les messages enregistrés ; chargement par la liste privée de `control-page.cjs` |
 | `public/` | Site de téléchargement et icônes ; aucune télécommande |
 | `shared/` | `protocol.mjs` réexporte les contrats spécialisés ; `render/` partage le rendu et son CSS ; `node/` contient les opérations disque communes, jamais importées par un renderer |
 | `scripts/` | Compilation, packaging et installation Mac |
@@ -27,6 +27,8 @@ MemeRoom comporte trois parties : un serveur de rooms, une télécommande dans l
 `GET /api/health` donne la version et les fonctionnalités ; `GET /api/rooms` liste les rooms publiques ; `GET /api/downloads` donne les installateurs disponibles. `POST /api/media` nécessite la session membre ; `GET/HEAD /media/:id` servent les médias temporaires par identifiant opaque, avec requêtes Range. `GET /releases/:filename` sert les fichiers autorisés par les manifestes. `/ws` transporte le protocole de room.
 
 Le contrat des messages, erreurs et limites est défini dans `shared/protocol.mjs` et `server/websocket.mjs`. Modifier les deux extrémités ensemble et conserver la compatibilité avec les clients déjà installés. Les routes publiques utilisent une liste explicite ; les fichiers du renderer privé ne doivent jamais y être ajoutés.
+
+`shared/contracts.d.ts` décrit les médias, messages, rooms et requêtes ; `shared/native.d.ts` décrit les preloads. `npm run check:types` vérifie leurs utilisations et les sources JavaScript sans transpilation. Les annotations complètent les contrôles d’exécution, qui restent responsables des données non fiables.
 
 ## Données et concurrence
 

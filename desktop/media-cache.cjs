@@ -6,6 +6,7 @@ const { LIMITS } = require('../shared/limits.mjs');
 const { assetURL, downloadAsset } = require('./media-files.cjs');
 
 class MediaCache {
+  /** @param {{root?: string, maxBytes?: number, ttlMs?: number, now?: () => number, download?: typeof downloadAsset}} [options] */
   constructor({
     root,
     maxBytes = LIMITS.roomBytes,
@@ -13,7 +14,10 @@ class MediaCache {
     now = Date.now,
     download = downloadAsset,
   } = {}) {
-    Object.assign(this, { maxBytes, ttlMs, now, download });
+    this.maxBytes = maxBytes;
+    this.ttlMs = ttlMs;
+    this.now = now;
+    this.download = download;
     this.entries = new Map();
     this.tasks = new Set();
     this.bytes = 0;
@@ -43,6 +47,10 @@ class MediaCache {
     await rm(entry.file, { force: true, maxRetries: 3, retryDelay: 100 });
   }
 
+  /** @param {import('../shared/contracts.js').MediaAsset} asset
+   * @param {string} server
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<import('../shared/contracts.js').MediaLease>} */
   async acquire(asset, server, signal) {
     if (this.closed) throw new Error('Cache fermé.');
     signal?.throwIfAborted();

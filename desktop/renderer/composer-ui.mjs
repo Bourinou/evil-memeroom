@@ -39,7 +39,9 @@ export function createComposerUI({ native, rooms, getSettings }) {
           : automatic
             ? 'Lecture après téléchargement complet. Fichiers supprimés du serveur après 10 min.'
             : 'Le compteur démarre après chargement. Fichiers supprimés du serveur après 10 min.';
-    for (const button of document.querySelectorAll('[data-load-preset]'))
+    for (const button of /** @type {NodeListOf<HTMLButtonElement>} */ (
+      document.querySelectorAll('button[data-load-preset]')
+    ))
       button.disabled = !session.connected || importing || sending;
   }
   function currentReaction() {

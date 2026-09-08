@@ -2,7 +2,7 @@
 async function runStartupUpdate({
   updater,
   signal,
-  status = () => {},
+  status = (_value) => {},
   install,
   checkTimeoutMs = 6000,
   stallTimeoutMs = 30000,

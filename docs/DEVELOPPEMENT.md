@@ -20,6 +20,7 @@ Le rendu des réactions est partagé dans `shared/render/media-view.mjs` et `rea
 | Commande | Usage |
 | --- | --- |
 | `npm run check` | Syntaxe de tout le JavaScript du projet |
+| `npm run check:types` | Contrats et sources serveur/desktop/shared, sans transpilation ; sentinelles dans `tests/contracts.ts` |
 | `npm run lint` | Erreurs statiques et variables inutilisées |
 | `npm run format:check` | Formatage reproductible ; corriger avec `npm run format` |
 | `npm test` | Protocole, accès, stockage et mises à jour |
@@ -51,7 +52,11 @@ Le serveur se prépare indépendamment avec `npm run pack:server`. Ajouter `-- -
 
 Reproduire le problème avec le plus petit test observable, constater son échec, corriger puis simplifier en gardant le test vert. Pour une extraction sans changement de comportement, conserver les tests de caractérisation et les exécuter avant/après. Les suites bureau peuvent être ciblées par `node tests/desktop.e2e.mjs appearance`, `playback` ou `rooms` ; ne pas modifier les fichiers pendant leur exécution.
 
-La CI vérifie syntaxe, lint, format et tests Node sur Linux/Windows ; un job Windows exécute les scénarios Electron. Les tests ClamAV utilisent un service simulé. Ni une CI verte ni les tests Windows ne remplacent une installation réelle sur Mac/Linux et le contrôle du moteur antivirus réel.
+La CI définit les vérifications Node et Electron sur Linux, Windows et macOS, les compilations et un job ClamAV réel. Les tests Node ordinaires conservent leur simulateur antivirus pour rester rapides. `CLAMAV_HOST=127.0.0.1 CLAMAV_PORT=3310 npm run test:antivirus` vérifie séparément un moteur réel avec la configuration du dépôt ; le port doit rester local. Voir le [bilan de consolidation](CONSOLIDATION.md) pour distinguer les résultats obtenus des validations encore externes.
+
+`npm run test:profile` vérifie deux lancements successifs sur un profil isolé. `MEMEROOM_PREVIOUS_EXE` permet de créer ce profil avec un ancien binaire et `MEMEROOM_TEST_EXE` de le rouvrir avec le nouveau. Le test conserve les réglages, les rooms et un message avec image ; les jetons de reconnexion peuvent être renouvelés normalement. Sous Windows, compiler avec `npx electron-builder --config scripts/validation-installer.cjs --win nsis --x64 --publish never`, puis lancer `./tests/install-windows.ps1` dans PowerShell pour vérifier installation, reprise de profil, réinstallation et désinstallation sous une identité distincte.
+
+`npm run bench` écrit les mesures CPU, RSS, latence et transferts dans `.test-artifacts/benchmark.json`. Pour tester une charge plus grande, définir `BENCH_MEDIA_MIB=128` et éventuellement `BENCH_PARTICIPANTS=16`. Les caches utilisent les vrais fichiers et téléchargements ; le benchmark ne mesure pas le décodage graphique. `MEMEROOM_RELEASES_DIR` permet au scénario `tests/distribution.e2e.mjs` de tester des livrables Windows/Linux préparés dans un dossier isolé.
 
 ## Où intervenir
 
@@ -59,7 +64,8 @@ La CI vérifie syntaxe, lint, format et tests Node sur Linux/Windows ; un job Wi
 | --- | --- | --- |
 | Validation d’un message | `shared/reactions.mjs`, `settings.mjs`, `subtitles.mjs` | `tests/protocol.test.mjs` |
 | Accès ou persistance d’une room | `server/websocket.mjs`, `rooms.mjs`, `room-store.mjs` | Tests room-access et room-lifecycle, puis scénario rooms |
-| Connexion et reconnexion | `desktop/renderer/connection.mjs`, `app.mjs`, `desktop/local-host.cjs` | Tests connection/local-host, puis rooms |
+| Connexion et reconnexion | `desktop/renderer/connection.mjs`, `room-session.mjs`, `rooms-ui.mjs`, `desktop/local-host.cjs` | Tests connection/room-session/local-host, puis rooms |
+| Composition et messages enregistrés | `desktop/renderer/composer-ui.mjs`, `presets-ui.mjs`, `desktop/presets.cjs` | Scénarios playback, test:focused et test:profile |
 | Affichage ou durée d’une réaction | `shared/render/`, `desktop/playback.cjs` | Tests playback, puis appearance/playback |
 | Téléchargement et cache | `desktop/media-files.cjs`, `media-cache.cjs`, `preview-media.cjs` | Tests cache/preview, puis playback et téléchargement lent |
 | Raccourci ou fenêtre | `desktop/renderer/shortcut-settings.mjs`, `main.cjs`, `overlay-layer.cjs` | Raccourcis et contrôle natif fullscreen |

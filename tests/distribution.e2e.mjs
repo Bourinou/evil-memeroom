@@ -8,7 +8,8 @@ import { sha512 } from '../scripts/stage-releases.mjs';
 const output = path.resolve('.test-artifacts', `distribution-${Date.now()}`);
 await mkdir(output, { recursive: true });
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
-const server = createRoomServer({ host: '127.0.0.1', port: 0, dataDir: null });
+const releasesDir = path.resolve(process.env.MEMEROOM_RELEASES_DIR || 'releases');
+const server = createRoomServer({ host: '127.0.0.1', port: 0, dataDir: null, releasesDir });
 const address = await server.start(),
   base = `http://127.0.0.1:${address.port}`;
 let app, corruptServer;
@@ -55,7 +56,7 @@ try {
     assert.equal(result.version, version);
     assert.equal(
       await sha512(result.files[0]),
-      await sha512(path.resolve('.' + downloads[platform].url)),
+      await sha512(path.join(releasesDir, path.basename(downloads[platform].url))),
     );
     const current = await app.evaluate(
       (_electron, options) => global.runDistributionCheck(options),
@@ -73,7 +74,7 @@ try {
   }
   const corrupt = path.join(output, 'corrupt');
   await mkdir(corrupt);
-  await copyFile('releases/latest.yml', path.join(corrupt, 'latest.yml'));
+  await copyFile(path.join(releasesDir, 'latest.yml'), path.join(corrupt, 'latest.yml'));
   await writeFile(path.join(corrupt, `MemeRoom-Setup-${version}.exe`), 'incomplete installer');
   corruptServer = createRoomServer({
     host: '127.0.0.1',

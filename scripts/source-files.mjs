@@ -26,6 +26,7 @@ export const BUILD_FILES = [
   'tests',
   'scripts',
   'eslint.config.mjs',
+  'tsconfig.json',
   '.prettierignore',
   '.prettierrc.json',
   '.nvmrc',

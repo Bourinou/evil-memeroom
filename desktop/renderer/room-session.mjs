@@ -1,5 +1,15 @@
 import { Connection, isNetworkError } from './connection.mjs';
 
+/** @param {{
+ * identity: () => Pick<import('../../shared/contracts.js').RoomRequests['create'], 'name' | 'desktop' | 'paused'>,
+ * resolveServer: (server: string) => Promise<string>,
+ * isSaved: (target: import('../../shared/contracts.js').RoomTarget) => boolean,
+ * onChange: (reason: string, session: unknown, error?: Error & {code?: string}) => void,
+ * onEvent: (event: import('../../shared/contracts.js').RoomEvent) => void,
+ * onJoined: (target: import('../../shared/contracts.js').RoomTarget, room: import('../../shared/contracts.js').JoinedRoom) => Promise<boolean>,
+ * connectionFactory?: (server: string, onEvent: (event: import('../../shared/contracts.js').RoomEvent) => void, onClose: () => void) => Connection,
+ * checkCreation?: (server: string) => Promise<void>
+ * }} options */
 export function createRoomSession({
   identity,
   resolveServer,
@@ -14,10 +24,13 @@ export function createRoomSession({
       throw new Error('Mettez le serveur à jour en 0.4.0 pour créer une room avec ces accès.');
   },
 }) {
-  let target = null,
-    room = null,
-    connection = null,
-    epoch = 0,
+  /** @type {import('../../shared/contracts.js').RoomTarget} */
+  let target = null;
+  /** @type {import('../../shared/contracts.js').JoinedRoom} */
+  let room = null;
+  /** @type {Connection} */
+  let connection = null;
+  let epoch = 0,
     timer,
     retries = 0,
     origin;
@@ -30,7 +43,9 @@ export function createRoomSession({
     epoch++;
     clearTimeout(timer);
     connection?.close();
-    connection = room = target = null;
+    connection = null;
+    room = null;
+    target = null;
     connected = connecting = false;
     retries = 0;
     status = 'Aucune room sélectionnée.';
@@ -128,6 +143,7 @@ export function createRoomSession({
       return connection?.skew || 0;
     },
     disconnect,
+    /** @param {import('../../shared/contracts.js').RoomTarget} record */
     async choose(record, create = false) {
       disconnect();
       const generation = epoch;

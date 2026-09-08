@@ -7,10 +7,12 @@ const CONTROL_URL = 'http://localhost/remote';
 const files = new Map([
   ['/remote', ['desktop/renderer/index.html', 'text/html; charset=utf-8']],
   ['/app.mjs', ['desktop/renderer/app.mjs', 'text/javascript; charset=utf-8']],
-  ...['dom', 'room-session', 'rooms-ui', 'composer-ui', 'presets-ui'].map((name) => [
-    `/${name}.mjs`,
-    [`desktop/renderer/${name}.mjs`, 'text/javascript; charset=utf-8'],
-  ]),
+  ...['dom', 'room-session', 'rooms-ui', 'composer-ui', 'presets-ui'].map(
+    /** @returns {[string, [string, string]]} */ (name) => [
+      `/${name}.mjs`,
+      [`desktop/renderer/${name}.mjs`, 'text/javascript; charset=utf-8'],
+    ],
+  ),
   ['/styles.css', ['desktop/renderer/styles.css', 'text/css; charset=utf-8']],
   [
     '/shared/render/media-view.mjs',

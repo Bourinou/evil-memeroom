@@ -19,6 +19,9 @@ cd -- "$build_dir"
 npm ci --ignore-scripts --no-audit --no-fund
 if [[ "${1:-}" != --skip-checks ]]; then
   npm run check
+  npm run check:types
+  npm run lint
+  npm run format:check
   npm test
 fi
 npm run dist:linux

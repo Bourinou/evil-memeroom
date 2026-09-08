@@ -93,10 +93,10 @@ export function createRoomServer({
         server.once('error', reject);
         server.listen(port, host, () => {
           server.off('error', reject);
-          resolve();
+          resolve(undefined);
         });
       });
-      return server.address();
+      return /** @type {import('node:net').AddressInfo} */ (server.address());
     },
     async stop() {
       clearInterval(sweep);

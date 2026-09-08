@@ -20,7 +20,7 @@ Utiliser une adresse Git de confidentialité fournie par votre compte GitHub si 
 1. Ouvrir une issue pour décrire le problème ou la fonctionnalité. Pour une faille, suivre [SECURITY.md](SECURITY.md).
 2. Créer un fork puis une branche dédiée. Garder une modification cohérente par pull request.
 3. Lire [l’architecture](docs/ARCHITECTURE.md) et [le guide de développement](docs/DEVELOPPEMENT.md). Conserver la séparation entre site public, contrôle privé de l’app et overlay.
-4. Écrire un test qui échoue sur le défaut, corriger puis simplifier. Pour une extraction, caractériser le comportement existant. Compléter la documentation et lancer `npm run check`, `npm run lint`, `npm run format:check`, `npm test`, puis les tests de bureau pertinents.
+4. Écrire un test qui échoue sur le défaut, corriger puis simplifier. Pour une extraction, caractériser le comportement existant. Compléter la documentation et lancer `npm run check`, `npm run check:types`, `npm run lint`, `npm run format:check`, `npm test`, puis les tests de bureau pertinents.
 5. Vérifier les fichiers avec `git diff --cached --stat`. Ne jamais ajouter de données réelles pour reproduire un bug.
 6. Ouvrir une pull request expliquant le problème, le résultat attendu et les vérifications réalisées. Les modifications sensibles nécessitent une revue de l’autrice ou d’un mainteneur.
 

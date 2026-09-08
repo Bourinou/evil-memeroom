@@ -1,5 +1,6 @@
 const os = require('node:os');
 
+/** @param {{port?: number, host?: string, dataDir?: string, interfaces?: typeof os.networkInterfaces, createServer?: (options: object) => Promise<ReturnType<typeof import('../server/index.mjs').createRoomServer>>}} [options] */
 function createLocalHost({
   port = Number(process.env.MEMEROOM_PORT || 3210),
   host = process.env.HOST || '0.0.0.0',

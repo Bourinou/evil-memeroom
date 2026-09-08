@@ -1,5 +1,12 @@
 import { hasTimedMedia, LIMITS, cleanText } from '../protocol.mjs';
 
+/**
+ * @param {Element} container
+ * @param {import('../contracts.js').ReactionEnvelope} reaction
+ * @param {{volume?: number, autoplay?: boolean, still?: boolean, onReady?: () => void,
+ * onDone?: () => void, onError?: (error: Error) => void, onProgress?: () => void,
+ * prepareSource?: (asset: import('../contracts.js').MediaAsset, server: string, signal: AbortSignal) => Promise<{url: string, release(): void}>}} [options]
+ */
 export function mountReaction(
   container,
   reaction,
@@ -62,7 +69,7 @@ export function mountReaction(
     art.className = 'reaction-art';
     const visual = document.createElement(reaction.media.kind === 'video' ? 'video' : 'img');
     visual.className = 'reaction-media';
-    if (reaction.media.kind === 'video') {
+    if (visual instanceof HTMLVideoElement) {
       visual.playsInline = true;
       visual.preload = still ? 'metadata' : 'auto';
       if (reaction.audio) mutedVideo = visual;
@@ -106,7 +113,7 @@ export function mountReaction(
     await new Promise((resolve, reject) => {
       const loaded = () => {
         cleanup();
-        resolve();
+        resolve(undefined);
       };
       const failed = () => {
         cleanup();

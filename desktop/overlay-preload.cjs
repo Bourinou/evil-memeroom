@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('overlay', {
+const api = /** @satisfies {import('../shared/native.js').OverlayAPI} */ ({
   onShow: (callback) => ipcRenderer.on('overlay:show', (_event, value) => callback(value)),
   onClear: (callback) => ipcRenderer.on('overlay:clear', () => callback()),
   onVolume: (callback) => ipcRenderer.on('overlay:volume', (_event, value) => callback(value)),
@@ -8,3 +8,4 @@ contextBridge.exposeInMainWorld('overlay', {
   progress: (id) => ipcRenderer.send('overlay:progress', id),
   error: (value, id) => ipcRenderer.send('overlay:error', value, id),
 });
+contextBridge.exposeInMainWorld('overlay', api);

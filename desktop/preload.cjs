@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('memeroom', {
+const api = /** @satisfies {import('../shared/native.js').NativeAPI} */ ({
   info: () => ipcRenderer.invoke('app:info'),
   ensureHosting: () => ipcRenderer.invoke('host:ensure'),
   onHosting: (callback) => ipcRenderer.on('host:changed', (_event, value) => callback(value)),
@@ -25,3 +25,4 @@ contextBridge.exposeInMainWorld('memeroom', {
     ipcRenderer.on('overlay:error', (_event, value) => callback(value));
   },
 });
+contextBridge.exposeInMainWorld('memeroom', api);

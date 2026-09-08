@@ -1,3 +1,4 @@
+/** @type {Readonly<import('./contracts.js').Settings>} */
 export const DEFAULT_SETTINGS = Object.freeze({
   paused: false,
   volume: 45,
@@ -23,6 +24,7 @@ export function validDismissShortcut(value) {
   );
 }
 
+/** @returns {import('./contracts.js').Settings} */
 export function cleanSettings(input = {}) {
   const number = (key, min, max) =>
     Number.isFinite(Number(input[key]))

@@ -6,6 +6,11 @@ const { LIMITS } = require('../shared/limits.mjs');
 const { normalizeServer } = require('../shared/client-state.mjs');
 const MAX_BYTES = LIMITS.uploadBytes;
 const TRANSFER_MS = LIMITS.transferTimeoutMs;
+// Node's streaming fetch body is wider than the DOM overload used by the renderer.
+const nodeFetch =
+  /** @type {(url: string | URL, init?: Omit<RequestInit, 'body'> & {body?: BodyInit | NodeJS.ReadableStream, duplex?: 'half'}) => Promise<Response>} */ (
+    fetch
+  );
 
 function assetURL(asset, server) {
   const base = new URL(normalizeServer(server));
@@ -17,7 +22,12 @@ function assetURL(asset, server) {
     throw new Error('Média invalide.');
   return new URL(asset.url, base).href;
 }
-/** @param {import('../shared/contracts').MediaAsset} asset */
+/**
+ * @param {import('../shared/contracts.js').MediaAsset} asset
+ * @param {string} server
+ * @param {string} destination
+ * @param {AbortSignal} [signal]
+ */
 async function downloadAsset(asset, server, destination, signal) {
   const timedSignal = AbortSignal.timeout(TRANSFER_MS);
   const response = await fetch(assetURL(asset, server), {
@@ -71,7 +81,7 @@ async function uploadAsset(file, asset, server, token) {
   if (!/^[A-Za-z0-9_-]{32}$/.test(token)) throw new Error('Connexion invalide.');
   const stream = createReadStream(file);
   try {
-    const response = await fetch(new URL('/api/media', base), {
+    const response = await nodeFetch(new URL('/api/media', base), {
       method: 'POST',
       redirect: 'error',
       headers: {
