@@ -385,13 +385,11 @@ try {
       { windowsHide: true },
     );
     await upload(alice.page, videoFile, 'test-video.webm');
-    await alice.page
-      .locator('#subtitle-input')
-      .setInputFiles({
-        name: 'test.srt',
-        mimeType: 'text/plain',
-        buffer: Buffer.from('1\n00:00:00,000 --> 00:00:02,000\nSous-titre de test'),
-      });
+    await alice.page.locator('#subtitle-input').setInputFiles({
+      name: 'test.srt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('1\n00:00:00,000 --> 00:00:02,000\nSous-titre de test'),
+    });
     await alice.page.waitForFunction(() =>
       document.querySelector('#subtitle-label').textContent.startsWith('1'),
     );
@@ -469,13 +467,11 @@ try {
       { windowsHide: true },
     );
     await upload(alice.page, longVideo, 'long-video.webm');
-    await alice.page
-      .locator('#subtitle-input')
-      .setInputFiles({
-        name: 'long.srt',
-        mimeType: 'text/plain',
-        buffer: Buffer.from('1\n00:00:16,000 --> 00:00:19,000\nAprès quinze secondes'),
-      });
+    await alice.page.locator('#subtitle-input').setInputFiles({
+      name: 'long.srt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('1\n00:00:16,000 --> 00:00:19,000\nAprès quinze secondes'),
+    });
     await send(alice.page);
     await waitOverlay(bob, true);
     await bob.overlay.waitForFunction(

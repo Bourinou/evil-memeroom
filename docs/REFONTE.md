@@ -25,3 +25,5 @@ La suite complète passe après adaptation de l'assertion. Les scénarios appare
 ### Cycle de vie des rooms
 
 Trois tests ajoutés avant l'implémentation échouent avec « Action inconnue. » : suppression par le propriétaire avec révocation des médias/sessions, capacité libérée après redémarrage, et conservation des accès si l'écriture sur disque échoue. La suppression sera accessible par le protocole et l'administration, sans changement de l'interface.
+
+Les trois tests passent après ajout de la suppression persistée. Un quatrième test d'administration, d'abord en échec (404 au lieu de 403), valide le secret distinct, l'activation facultative et la suppression durable. L'administration locale réutilise la même opération métier, sans éditer le fichier de rooms pendant que le serveur fonctionne.

@@ -13,6 +13,7 @@
   "scripts": {
     "start": "electron .",
     "server": "node server/index.mjs",
+    "rooms": "node server/admin.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:desktop": "node scripts/test-desktop.mjs",
     "test:focused": "node scripts/test-desktop.mjs --focused",

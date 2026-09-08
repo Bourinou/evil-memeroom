@@ -12,6 +12,7 @@ import { inspectMedia } from './media-scan.mjs';
 import { PasswordLimiter, clientIP } from './password-limiter.mjs';
 import { makeMediaSpace } from './media-capacity.mjs';
 import { RoomStore } from './room-store.mjs';
+import { createAdminHandler } from './admin-api.mjs';
 import { listDownloads, serveRelease } from './releases.mjs';
 import {
   secret,
@@ -54,6 +55,7 @@ export function createRoomServer({
   emptyRoomTtlMs = 30 * 60 * 1000,
   mediaTtlMs = LIMITS.mediaTtlMs,
   scanMedia = inspectMedia,
+  adminToken = process.env.MEMEROOM_ADMIN_TOKEN,
   trustProxy = process.env.MEMEROOM_TRUST_PROXY === '1',
   allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean),
 } = {}) {
@@ -143,6 +145,24 @@ export function createRoomServer({
     }
     ws.member = null;
   };
+  function deleteRoom(room, onSaved = () => {}) {
+    try {
+      store.remove(room.code);
+    } catch {
+      throw Object.assign(new Error('Impossible d’enregistrer la suppression de la room.'), {
+        status: 500,
+      });
+    }
+    onSaved();
+    for (const asset of room.media.values()) removeMedia(asset);
+    for (const current of [...room.members.values()]) {
+      send(current.ws, { type: 'room-deleted', code: room.code });
+      leave(current.ws);
+      current.ws.close(1000, 'Room supprimée');
+    }
+    rooms.delete(room.code);
+  }
+  const handleAdmin = createAdminHandler({ adminToken, rooms, deleteRoom, json });
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -175,6 +195,7 @@ export function createRoomServer({
       return;
     }
     try {
+      if (handleAdmin(req, res, url)) return;
       if (req.method === 'GET' && url.pathname === '/api/health') {
         json(res, 200, {
           app: 'memeroom',
@@ -497,6 +518,13 @@ export function createRoomServer({
           member.paused = body.paused === true;
           presence(room);
           reply({});
+          return;
+        }
+        if (message.type === 'room-delete') {
+          if (!member.owner) throw new Error('Seul le gestionnaire peut supprimer cette room.');
+          if (body.code !== room.code) throw new Error('Confirmez le code de la room à supprimer.');
+          // Persist first, then acknowledge before the connection is closed.
+          deleteRoom(room, () => reply({ deleted: room.code }));
           return;
         }
         if (message.type === 'room-settings') {

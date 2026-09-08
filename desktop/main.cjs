@@ -372,12 +372,10 @@ if (singleInstance)
           platform: process.platform,
           server: baseUrl,
           addresses,
-          displays: screen
-            .getAllDisplays()
-            .map((d, i) => ({
-              id: String(d.id),
-              label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}`,
-            })),
+          displays: screen.getAllDisplays().map((d, i) => ({
+            id: String(d.id),
+            label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}`,
+          })),
         };
       });
       ipcMain.handle('client:save', (event, value) => {

@@ -259,6 +259,13 @@ function renderSettings() {
 }
 function handleEvent(event) {
   if (!connected || !room) return;
+  if (event.type === 'room-deleted') {
+    disconnect();
+    client.active = null;
+    void saveClient();
+    notify('Cette room a été supprimée par son gestionnaire.');
+    return;
+  }
   if (event.type === 'members') {
     room.members = event.members;
     renderRooms();

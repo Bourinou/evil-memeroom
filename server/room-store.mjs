@@ -67,6 +67,15 @@ export class RoomStore {
       ownerHash: room.ownerHash,
       accessKey: room.accessKey,
     });
+    this.persist(next);
+  }
+  remove(code) {
+    if (!this.file) return;
+    const next = new Map(this.records);
+    if (!next.delete(code)) throw new Error('Room introuvable.');
+    this.persist(next);
+  }
+  persist(next) {
     mkdirSync(path.dirname(this.file), { recursive: true });
     writeFileSync(
       this.file + '.tmp',
