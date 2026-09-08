@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createTempDirectory } from '../shared/node/temp-directory.cjs';
 import { randomUUID } from 'node:crypto';
 import { LIMITS } from '../shared/protocol.mjs';
-import { detectMedia } from './media.mjs';
+import { detectMedia } from '../shared/media-format.mjs';
 
 export const mediaError = (message, status = 400) => Object.assign(new Error(message), { status });
 export class MediaStorage {

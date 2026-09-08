@@ -23,7 +23,9 @@ test('the remote control and its dependencies load from the bundle without an HT
     '/app.mjs',
     '/styles.css',
     '/connection.mjs',
-    '/media-view.mjs',
+    '/shared/render/media-view.mjs',
+    '/shared/render/reaction.css',
+    '/shared/base.css',
     '/shared/protocol.mjs',
     '/favicon.svg',
   ]) {
@@ -40,6 +42,34 @@ test('the remote control and its dependencies load from the bundle without an HT
     assert.equal((await handler(new Request(new URL(file, CONTROL_URL)))).status, 404, file);
   }
   assert.equal((await handler(new Request(CONTROL_URL, { method: 'POST' }))).status, 404);
+});
+
+test('every transitive browser import resolves through the private session without exposing Node', async () => {
+  let handler;
+  installControlPage({
+    protocol: {
+      handle(_scheme, callback) {
+        handler = callback;
+      },
+    },
+  });
+  const pending = ['/app.mjs'],
+    seen = new Set();
+  while (pending.length) {
+    const pathname = pending.pop();
+    if (seen.has(pathname)) continue;
+    seen.add(pathname);
+    const url = new URL(pathname, CONTROL_URL);
+    const response = await handler(new Request(url));
+    assert.equal(response.status, 200, pathname);
+    const source = await response.text();
+    assert.doesNotMatch(source, /from\s*['"](?:node:|electron)/, pathname);
+    for (const match of source.matchAll(/(?:from\s*|import\s*)['"]([^'"]+)['"]/g)) {
+      assert.ok(match[1].startsWith('.'), `Browser dependency must be local: ${match[1]}`);
+      pending.push(new URL(match[1], url).pathname);
+    }
+  }
+  assert.ok(seen.has('/shared/render/media-view.mjs'));
 });
 
 test('room HTTP requests keep their authorization and binary body when forwarded', async () => {

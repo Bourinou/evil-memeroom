@@ -58,7 +58,7 @@ async function downloadAsset(asset, server, destination, signal) {
     } finally {
       await fd.close();
     }
-    const { detectMedia } = await import('../server/media.mjs');
+    const { detectMedia } = await import('../shared/media-format.mjs');
     const format = detectMedia(header);
     if (
       !format ||

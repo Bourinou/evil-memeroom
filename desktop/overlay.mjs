@@ -1,4 +1,4 @@
-import { mountReaction } from '../public/media-view.mjs';
+import { mountReaction } from '../shared/render/media-view.mjs';
 let current;
 const root = document.querySelector('#overlay-root');
 const clear = () => {

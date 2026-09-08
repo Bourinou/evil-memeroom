@@ -7,7 +7,7 @@ La méthode suit des tests de caractérisation pour les extractions, et le cycle
 ## Suivi des lots
 
 - [x] Socle de tests fiable, scénarios indépendants et CI.
-- [ ] Formatage, règles de qualité et CSS organisé sans changement visuel.
+- [x] Formatage, règles de qualité et CSS organisé sans changement visuel.
 - [ ] Cycle de vie des rooms et des temporaires.
 - [ ] Frontières serveur, renderer, lecture et contrats partagés.
 - [ ] Livrables indépendants et documentation des contributions/forks.
@@ -31,3 +31,9 @@ Les trois tests passent après ajout de la suppression persistée. Un quatrième
 ### Temporaires
 
 Deux tests écrits avant le module de gestion des temporaires valident la récupération d'une instance terminée, la conservation d'une instance active et des dossiers sans propriétaire, ainsi que le refus d'un préfixe traversant. Le stockage serveur utilise maintenant des marqueurs de propriété ; les builds temporaires sont nettoyés sauf `MEMEROOM_KEEP_BUILD=1`. Les anciens dossiers dépourvus de marqueur sont volontairement laissés au nettoyage système. L'intégration du cache desktop et de l'arrêt asynchrone suit dans le lot lecture.
+
+### Frontières et contrats
+
+Les tests de résolution des imports privés et des ressources HTML ont précédé le déplacement. La télécommande vit dans `desktop/renderer/`, le site dans `public/`, le rendu commun dans `shared/render/`. Le contrat partagé reste accessible par la façade `shared/protocol.mjs`, avec des modules distincts pour les réglages, limites, réactions, sous-titres et favoris. Le serveur assemble désormais les transports HTTP/WebSocket, la politique des requêtes et le registre des rooms.
+
+Les 46 tests Node passent (un test de lien symbolique ignoré sous Windows). Les scénarios Electron apparence et lecture passent. Le scénario rooms a échoué pendant des modifications concurrentes aux fichiers, puis passe entièrement à sa réexécution sur les fichiers stables. Les prochaines suites natives seront exécutées sans modifier les sources en parallèle.

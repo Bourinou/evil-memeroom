@@ -11,9 +11,9 @@ npm start
 
 ## Modifier l’interface
 
-Le site de téléchargement est dans `public/downloads.html`, `downloads.css` et `downloads.mjs`. La télécommande utilise `public/index.html`, `app.mjs` et `styles.css` ; elle est servie par la session privée Electron. Ajouter un module privé nécessite de mettre à jour la liste autorisée de `desktop/control-page.cjs`. Ne pas créer de route HTTP publique pour contourner cette liste.
+Le site de téléchargement est dans `public/downloads.html`, `downloads.css` et `downloads.mjs`. La télécommande utilise `desktop/renderer/index.html`, `app.mjs` et `styles.css` ; elle est servie par la session privée Electron. Ajouter un module privé nécessite de mettre à jour la liste autorisée de `desktop/control-page.cjs`. Ne pas créer de route HTTP publique pour contourner cette liste.
 
-Le rendu des réactions est partagé dans `public/media-view.mjs`. Le processus principal valide les fichiers et les messages IPC. Garder les pseudos et textes dans `textContent`, sans insertion de HTML envoyé par un participant.
+Le rendu des réactions est partagé dans `shared/render/media-view.mjs` et `reaction.css`. Le processus principal valide les fichiers et les messages IPC. Garder les pseudos et textes dans `textContent`, sans insertion de HTML envoyé par un participant.
 
 ## Vérifier selon la modification
 

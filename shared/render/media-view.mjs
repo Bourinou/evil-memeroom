@@ -1,4 +1,4 @@
-import { hasTimedMedia, LIMITS, cleanText } from '../shared/protocol.mjs';
+import { hasTimedMedia, LIMITS, cleanText } from '../protocol.mjs';
 
 export function mountReaction(
   container,

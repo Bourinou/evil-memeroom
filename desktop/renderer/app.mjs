@@ -7,9 +7,9 @@ import {
   hasTimedMedia,
   validDismissShortcut,
   LIMITS,
-} from './shared/protocol.mjs';
+} from '../../shared/protocol.mjs';
 import { Connection } from './connection.mjs';
-import { mountReaction } from './media-view.mjs';
+import { mountReaction } from '../../shared/render/media-view.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const native = window.memeroom;

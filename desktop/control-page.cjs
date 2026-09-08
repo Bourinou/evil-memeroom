@@ -5,12 +5,23 @@ const { readFile } = require('node:fs/promises');
 // No HTTP server or public route serves the remote control.
 const CONTROL_URL = 'http://localhost/remote';
 const files = new Map([
-  ['/remote', ['public/index.html', 'text/html; charset=utf-8']],
-  ['/app.mjs', ['public/app.mjs', 'text/javascript; charset=utf-8']],
-  ['/styles.css', ['public/styles.css', 'text/css; charset=utf-8']],
-  ['/media-view.mjs', ['public/media-view.mjs', 'text/javascript; charset=utf-8']],
-  ['/connection.mjs', ['public/connection.mjs', 'text/javascript; charset=utf-8']],
+  ['/remote', ['desktop/renderer/index.html', 'text/html; charset=utf-8']],
+  ['/app.mjs', ['desktop/renderer/app.mjs', 'text/javascript; charset=utf-8']],
+  ['/styles.css', ['desktop/renderer/styles.css', 'text/css; charset=utf-8']],
+  [
+    '/shared/render/media-view.mjs',
+    ['shared/render/media-view.mjs', 'text/javascript; charset=utf-8'],
+  ],
+  ['/shared/render/reaction.css', ['shared/render/reaction.css', 'text/css; charset=utf-8']],
+  ['/shared/base.css', ['shared/base.css', 'text/css; charset=utf-8']],
+  ['/connection.mjs', ['desktop/renderer/connection.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/protocol.mjs', ['shared/protocol.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/limits.mjs', ['shared/limits.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/text.mjs', ['shared/text.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/settings.mjs', ['shared/settings.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/subtitles.mjs', ['shared/subtitles.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/client-state.mjs', ['shared/client-state.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/reactions.mjs', ['shared/reactions.mjs', 'text/javascript; charset=utf-8']],
   ['/favicon.svg', ['public/favicon.svg', 'image/svg+xml']],
 ]);
 const csp =
