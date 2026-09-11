@@ -36,8 +36,11 @@ test('video and audio use playback completion; text and images keep a fixed time
     assert.equal(reaction.durationMode,'media'); assert.equal(hasTimedMedia(reaction),true);
     assert.equal(reaction.duration,15); // Compatibility value, never the updated receiver's playback timer.
   }
+  assert.equal(validateReaction({mediaId:'image',duration:1},media).durationMode,'fixed');
+  assert.equal(validateReaction({mediaId:'image',duration:1},media).duration,1);
   assert.equal(validateReaction({mediaId:'image',duration:2},media).durationMode,'fixed');
   assert.throws(()=>validateReaction({caption:'Text',duration:0.5,durationMode:'media'},media));
+  assert.throws(()=>validateReaction({caption:'Text',duration:0.8},media), /entre 1 et 15 secondes/);
 });
 test('saved room state preserves local server identity and deduplicates bookmarks',()=>{
   const room={code:'ABCD2345',name:'Les amis',server:'local'};

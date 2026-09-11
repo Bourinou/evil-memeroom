@@ -39,7 +39,7 @@ Le projet est distribué sous [CC BY-NC-SA 4.0](LICENSE) : attribution, usage no
 4. Cliquer sur Envoyer pour diffuser, Aperçu pour voir le résultat, ou Enregistrer pour conserver ce message avec ses fichiers sur cet appareil.
 5. Dans Enregistrés, Charger prépare un message dans la room actuelle. Il peut être modifié avant de cliquer sur Envoyer.
 
-Une image ou un texte sans audio reste affiché de 2 à 15 secondes, après chargement. Vidéos et audios n’ont pas cette limite de durée. Le raccourci d’arrêt, la pause ou un nouvel envoi accepté peuvent interrompre le contenu. Un lecteur bloqué pendant 30 secondes est arrêté ; le téléchargement a un délai distinct de 30 minutes maximum.
+Une image ou un texte sans audio reste affiché de 1 à 15 secondes, après chargement. Vidéos et audios n’ont pas cette limite de durée. Le raccourci d’arrêt, la pause ou un nouvel envoi accepté peuvent interrompre le contenu. Un lecteur bloqué pendant 30 secondes est arrêté ; le téléchargement a un délai distinct de 30 minutes maximum.
 
 **Ctrl + Maj + F9** arrête le contenu actuel. Ce raccourci est modifiable dans Réglages. **Ctrl + Maj + F8** met la réception en pause (Cmd + Maj + F8 sur Mac). Fermer la fenêtre conserve la réception ; utiliser Quitter MemeRoom dans la zone de notification pour arrêter l’application.
 

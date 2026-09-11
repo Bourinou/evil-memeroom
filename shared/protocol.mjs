@@ -1,4 +1,4 @@
-export const LIMITS = Object.freeze({ uploadBytes: 1024 ** 3, roomBytes: 2 * 1024 ** 3, totalBytes: 8 * 1024 ** 3, mediaTtlMs: 10 * 60 * 1000, transferTimeoutMs: 30 * 60 * 1000, durationMin: 2, durationMax: 15, playbackStallMs: 30000, cooldownMs: 3000, members: 16, mediaCount: 30 });
+export const LIMITS = Object.freeze({ uploadBytes: 1024 ** 3, roomBytes: 2 * 1024 ** 3, totalBytes: 8 * 1024 ** 3, mediaTtlMs: 10 * 60 * 1000, transferTimeoutMs: 30 * 60 * 1000, durationMin: 1, durationMax: 15, playbackStallMs: 30000, cooldownMs: 3000, members: 16, mediaCount: 30 });
 export function hasTimedMedia(reaction) { return reaction.media?.kind === 'video' || reaction.media?.kind === 'audio' || reaction.audio?.kind === 'audio'; }
 export const DEFAULT_SETTINGS = Object.freeze({ paused: false, hideSelf: false, volume: 45, size: 60, cooldown: 5, position: 'center', display: 'primary', dismissShortcut: 'Control+Shift+F9' });
 export function validDismissShortcut(value) {
@@ -49,7 +49,7 @@ export function validateReaction(input, media) {
   // Updated receivers always use the players' ended events for video/audio.
   const automatic = hasTimedMedia({ media: visual, audio });
   const duration = automatic ? LIMITS.durationMax : Number(input.duration);
-  if (!Number.isFinite(duration) || duration < LIMITS.durationMin || duration > LIMITS.durationMax) throw new Error('La durée doit être comprise entre 2 et 15 secondes.');
+  if (!Number.isFinite(duration) || duration < LIMITS.durationMin || duration > LIMITS.durationMax) throw new Error('La durée doit être comprise entre 1 et 15 secondes.');
   return { media: visual ? publicMedia(visual) : null, audio: audio ? publicMedia(audio) : null, name: visual?.name || audio?.name || caption.slice(0, 60), caption, subtitles: validCues(input.subtitles), duration, durationMode: automatic ? 'media' : 'fixed' };
 }
 export function publicMedia(asset) { return { id: asset.id, name: asset.name, kind: asset.kind, mime: asset.mime, url: `/media/${asset.id}`, bytes: asset.bytes }; }

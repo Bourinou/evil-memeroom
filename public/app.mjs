@@ -403,7 +403,7 @@ $('#send-form').addEventListener('submit', async event => {
   try {
     const payload = currentReaction();
     const durationVal = Number($('#duration').value);
-    if (!audio && visual?.kind !== 'video' && Number.isFinite(durationVal) && durationVal > LIMITS.durationMax) {
+    if (!audio && visual?.kind !== 'video' && Number.isFinite(durationVal) && (durationVal < 2 || durationVal > LIMITS.durationMax)) {
       const silentAsset = await uploadSilentAudio(durationVal);
       payload.audioId = silentAsset.id;
       payload.audio = silentAsset;
@@ -680,7 +680,7 @@ $('#show-composer').addEventListener('click', () => showMessages(false));
 $('#show-presets').addEventListener('click', () => showMessages(true));
 $('#duration')?.addEventListener('change', () => {
   const val = Number($('#duration').value);
-  if (!Number.isFinite(val) || val < 2) $('#duration').value = '2';
+  if (!Number.isFinite(val) || val < 1) $('#duration').value = '1';
   else if (val > 600) $('#duration').value = '600';
 });
 $('#saved-search')?.addEventListener('input', renderSavedMemes);
