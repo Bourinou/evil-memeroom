@@ -8,7 +8,7 @@ async function checkStartupUpdate({ app, BrowserWindow, ipcMain }) {
   const { autoUpdater } = require('electron-updater');
   autoUpdater.logger = console;
   const controller = new AbortController();
-  const window = new BrowserWindow({ title: 'MemeRoom', width: 440, height: 260, resizable: false, maximizable: false, backgroundColor: '#f7f7f8', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'update-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const window = new BrowserWindow({ title: 'evil memeroom', width: 440, height: 260, resizable: false, maximizable: false, backgroundColor: '#0b0d10', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'update-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.on('will-attach-webview', event => event.preventDefault());
@@ -38,11 +38,11 @@ async function checkStartupUpdate({ app, BrowserWindow, ipcMain }) {
         try { autoUpdater.quitAndInstall(true, true); } catch (error) { failed(error); }
       })
     });
-    if (result.error) console.warn('MemeRoom :', result.error);
+    if (result.error) console.warn('evil memeroom :', result.error);
     if (!result.installed && !window.isDestroyed()) window.hide();
     return { ...result, close() { if (!window.isDestroyed()) { window.removeListener('close', onClose); window.destroy(); } } };
   } catch (error) {
-    console.warn('MemeRoom : mise à jour indisponible.', error.message);
+    console.warn('evil memeroom : mise à jour indisponible.', error.message);
     window.hide();
     return { installed: false, close() { if (!window.isDestroyed()) window.destroy(); } };
   } finally { ipcMain.removeListener('update:skip', skip); }

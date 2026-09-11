@@ -26,7 +26,7 @@ try {
   const url=`http://127.0.0.1:${server.address().port}`;
   await page.evaluate(({url,bytes})=>{const id='A'.repeat(32);window.testShow=window.memeroom.show({id:'slow-image',server:url,caption:'ÇA VALAIT LE COUP D’ATTENDRE',sender:{name:'Rose'},duration:2,age:8000,media:{id,url:'/media/'+id,name:'test.png',bytes,kind:'image',mime:'image/png'}}).then(result=>window.testResult=result);},{url,bytes:png.length});
   await new Promise(r=>setTimeout(r,2100));
-  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='MemeRoom Overlay').isVisible()),false);
+  assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='evil memeroom Overlay'||w.getTitle()==='MemeRoom Overlay').isVisible()),false);
   await overlay.waitForFunction(()=>document.querySelector('.reaction-view')?.hidden===false);
   assert.equal(await overlay.locator('.reaction-sender').textContent(),'Rose');
   assert.equal(await overlay.locator('.reaction-caption').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');

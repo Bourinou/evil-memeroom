@@ -9,7 +9,7 @@ test('the remote control and its dependencies load from the bundle without an HT
   assert.equal(page.status, 200);
   assert.match(await page.text(), /id="send-form"/);
   assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
-  for (const file of ['/app.mjs', '/styles.css', '/connection.mjs', '/media-view.mjs', '/shared/protocol.mjs', '/favicon.svg']) {
+  for (const file of ['/app.mjs', '/styles.css', '/connection.mjs', '/media-view.mjs', '/shared/protocol.mjs', '/favicon.svg', '/icon.png']) {
     const response = await handler(new Request(new URL(file, CONTROL_URL)));
     assert.equal(response.status, 200, file); assert.ok((await response.arrayBuffer()).byteLength > 0);
   }

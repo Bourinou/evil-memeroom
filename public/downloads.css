@@ -5,7 +5,7 @@
 .downloads h1 { font-size:27px; }
 .intro { margin-top:10px; color:var(--muted); }
 .download-options { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:30px 0 24px; }
-.download-options section { border:1px solid var(--border); border-radius:9px; padding:24px; background:#fff; }
+.download-options section { border:1px solid var(--border); border-radius:9px; padding:24px; background:#13161d; }
 .download-options h2 { margin-bottom:5px; }
 .download-options section>p:last-child { margin-top:18px; font-size:14px; }
 .download-button { display:block; text-align:center; border-radius:6px; padding:10px; margin:24px 0 8px; font-size:14px; text-decoration:none; }

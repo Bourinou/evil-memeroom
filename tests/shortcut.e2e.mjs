@@ -39,7 +39,7 @@ try {
   await page.evaluate(() => window.memeroom.minimize());
   await app.evaluate(() => globalThis.shortcutCallbacks.get('Control+Alt+F10')());
   await overlay.waitForFunction(() => !document.querySelector('audio'));
-  assert.equal(await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().find(w => w.getTitle() === 'MemeRoom Overlay').isVisible()), false);
+  assert.equal(await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().find(w => w.getTitle() === 'evil memeroom Overlay' || w.getTitle() === 'MemeRoom Overlay').isVisible()), false);
   assert.equal(await page.evaluate(async () => (await window.memeroom.info()).settings.paused), false);
   assert.equal((await page.evaluate(() => window.memeroom.test())).shown, true);
   await app.evaluate(({globalShortcut}) => globalShortcut.register('Control+Alt+F11', () => {}));

@@ -14,6 +14,13 @@ contextBridge.exposeInMainWorld('memeroom', {
   test: () => ipcRenderer.invoke('overlay:test'),
   clear: () => ipcRenderer.send('overlay:clear'),
   minimize: () => ipcRenderer.invoke('app:minimize'),
+  listSavedMemes: () => ipcRenderer.invoke('savedMemes:list'),
+  openSavedMemesFolder: () => ipcRenderer.invoke('savedMemes:openFolder'),
+  openSavedMemeFile: name => ipcRenderer.invoke('savedMemes:openFile', name),
+  deleteSavedMeme: name => ipcRenderer.invoke('savedMemes:delete', name),
+  renameSavedMeme: (oldName, newName) => ipcRenderer.invoke('savedMemes:rename', oldName, newName),
+  readSavedMeme: name => ipcRenderer.invoke('savedMemes:read', name),
+  onSavedMemesUpdated: callback => { ipcRenderer.on('savedMemes:updated', () => callback()); },
   onSettings: callback => { ipcRenderer.on('settings:changed', (_event, value) => callback(value)); },
   onError: callback => { ipcRenderer.on('overlay:error', (_event, value) => callback(value)); }
 });

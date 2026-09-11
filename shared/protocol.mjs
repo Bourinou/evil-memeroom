@@ -1,15 +1,18 @@
 export const LIMITS = Object.freeze({ uploadBytes: 1024 ** 3, roomBytes: 2 * 1024 ** 3, totalBytes: 8 * 1024 ** 3, mediaTtlMs: 10 * 60 * 1000, transferTimeoutMs: 30 * 60 * 1000, durationMin: 2, durationMax: 15, playbackStallMs: 30000, cooldownMs: 3000, members: 16, mediaCount: 30 });
 export function hasTimedMedia(reaction) { return reaction.media?.kind === 'video' || reaction.media?.kind === 'audio' || reaction.audio?.kind === 'audio'; }
-export const DEFAULT_SETTINGS = Object.freeze({ paused: false, volume: 45, size: 60, cooldown: 5, position: 'center', display: 'primary', dismissShortcut: 'Control+Shift+F9' });
+export const DEFAULT_SETTINGS = Object.freeze({ paused: false, hideSelf: false, volume: 45, size: 60, cooldown: 5, position: 'center', display: 'primary', dismissShortcut: 'Control+Shift+F9' });
 export function validDismissShortcut(value) {
   if (value === '') return true;
   if (typeof value !== 'string' || value.length > 80 || value === 'Control+Shift+F8') return false;
   const parts = value.split('+'), key = parts.pop();
-  return parts.join('+') === ['Control','Alt','Shift','Super'].filter(part => parts.includes(part)).join('+') && /^(?:[A-Z0-9]|F(?:[1-9]|1\d|2[0-4])|Space|Enter|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Up|Down|Left|Right)$/.test(key) && (/^F\d+$/.test(key) || parts.some(part => ['Control','Alt','Super'].includes(part)));
+  if (!key) return false;
+  const validModifiers = new Set(['Control','Alt','Shift','Super','Command','Cmd','Option']);
+  for (const part of parts) if (!validModifiers.has(part)) return false;
+  return true;
 }
 export function cleanSettings(input = {}) {
   const number = (key, min, max) => Number.isFinite(Number(input[key])) ? Math.max(min, Math.min(max, Number(input[key]))) : DEFAULT_SETTINGS[key];
-  return { paused: input.paused === true, volume: number('volume', 0, 100), size: number('size', 20, 60), cooldown: number('cooldown', 3, 60), position: ['bottom-right', 'bottom-left', 'center', 'top-right'].includes(input.position) ? input.position : DEFAULT_SETTINGS.position, display: typeof input.display === 'string' ? input.display.slice(0, 50) : 'primary', dismissShortcut: validDismissShortcut(input.dismissShortcut) ? input.dismissShortcut : DEFAULT_SETTINGS.dismissShortcut };
+  return { paused: input.paused === true, hideSelf: input.hideSelf === true, volume: number('volume', 0, 100), size: number('size', 20, 60), cooldown: number('cooldown', 3, 60), position: ['bottom-right', 'bottom-left', 'center', 'top-right'].includes(input.position) ? input.position : DEFAULT_SETTINGS.position, display: typeof input.display === 'string' ? input.display.slice(0, 50) : 'primary', dismissShortcut: validDismissShortcut(input.dismissShortcut) ? input.dismissShortcut : DEFAULT_SETTINGS.dismissShortcut };
 }
 export function cleanText(value, max) { return typeof value === 'string' ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, max) : ''; }
 export function parseSubtitles(input) {

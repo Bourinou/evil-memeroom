@@ -11,7 +11,8 @@ const files = new Map([
   ['/media-view.mjs', ['public/media-view.mjs', 'text/javascript; charset=utf-8']],
   ['/connection.mjs', ['public/connection.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/protocol.mjs', ['shared/protocol.mjs', 'text/javascript; charset=utf-8']],
-  ['/favicon.svg', ['public/favicon.svg', 'image/svg+xml']]
+  ['/favicon.svg', ['public/favicon.svg', 'image/svg+xml']],
+  ['/icon.png', ['public/icon.png', 'image/png']]
 ]);
 const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: http: https:; media-src 'self' blob: http: https:; connect-src http: https: ws: wss:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
@@ -21,6 +22,28 @@ function installControlPage(controlSession) {
     if (url.origin !== new URL(CONTROL_URL).origin) {
       // Room API requests still use the network, with their body and headers intact.
       return controlSession.fetch(request, { bypassCustomProtocolHandlers: true });
+    }
+    const MEMEROOM_DIR = path.join(require('node:os').homedir(), 'memeroom');
+    if (url.pathname.startsWith('/saved-memes/')) {
+      const rawName = decodeURIComponent(url.pathname.slice('/saved-memes/'.length));
+      const safeName = path.basename(rawName);
+      if (!safeName || safeName.startsWith('.')) return new Response('Fichier introuvable.', { status: 404 });
+      const target = path.join(MEMEROOM_DIR, safeName);
+      try {
+        const ext = path.extname(safeName).toLowerCase();
+        const mimes = {
+          '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+          '.gif': 'image/gif', '.webp': 'image/webp',
+          '.mp4': 'video/mp4', '.webm': 'video/webm',
+          '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg'
+        };
+        const contentType = mimes[ext] || 'application/octet-stream';
+        const headers = { 'Content-Type': contentType, 'Content-Security-Policy': csp, 'Cache-Control': 'max-age=3600', 'Accept-Ranges': 'bytes' };
+        const data = await readFile(target);
+        return new Response(request.method === 'HEAD' ? null : data, { headers });
+      } catch {
+        return new Response('Fichier introuvable.', { status: 404 });
+      }
     }
     const file = files.get(url.pathname);
     if (!file || !['GET', 'HEAD'].includes(request.method)) return new Response('Page introuvable.', { status: 404 });

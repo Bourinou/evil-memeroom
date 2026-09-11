@@ -1,5 +1,6 @@
 {
-  "name": "memeroom",
+  "name": "evil-memeroom",
+  "desktopName": "evil-memeroom",
   "version": "0.6.0",
   "description": "Des réactions en direct, par-dessus votre écran.",
   "private": true,
@@ -35,7 +36,7 @@
   },
   "build": {
     "appId": "fr.memeroom.desktop",
-    "productName": "MemeRoom",
+    "productName": "evil memeroom",
     "directories": {
       "output": "release"
     },
@@ -57,8 +58,9 @@
       "target": "AppImage",
       "category": "Network",
       "icon": "public/icon-linux.png",
-      "executableName": "memeroom",
-      "artifactName": "MemeRoom-${version}-Linux-${arch}.${ext}"
+      "executableName": "evil-memeroom",
+      "syncDesktopName": true,
+      "artifactName": "evil-memeroom-${version}-Linux-${arch}.${ext}"
     },
     "appImage": {
       "executableArgs": []
@@ -68,7 +70,7 @@
       "category": "public.app-category.social-networking",
       "icon": "public/icon-mac.png",
       "identity": null,
-      "artifactName": "MemeRoom-${version}-Mac-${arch}.${ext}"
+      "artifactName": "evil-memeroom-${version}-Mac-${arch}.${ext}"
     },
     "publish": [
       {
@@ -81,8 +83,8 @@
       "oneClick": false,
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "MemeRoom-Setup-${version}.exe",
-      "shortcutName": "MemeRoom",
+      "artifactName": "evil-memeroom-Setup-${version}.exe",
+      "shortcutName": "evil memeroom",
       "allowToChangeInstallationDirectory": true,
       "allowElevation": false
     }

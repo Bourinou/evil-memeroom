@@ -16,7 +16,7 @@ let mode = 'create', epoch = 0, retryTimer, retries = 0, toastTimer, preview, ne
 let status = 'Aucune room sélectionnée.';
 let recordingShortcut = false, shortcutBusy = false;
 let mac = false;
-let presets = [], editingPreset = null, presetBusy = false;
+let savedMemes = [];
 const shortcutLabel = value => value ? value.split('+').map(key => ({ Control:'Ctrl', Shift:'Maj', Super:mac ? 'Cmd' : 'Windows', Space:'Espace', Up:'Haut', Down:'Bas', Left:'Gauche', Right:'Droite' }[key] || key)).join(' + ') : 'Choisir un raccourci';
 const keyFor = value => value ? `${value.server}|${value.code}` : '';
 const resolveServer = ref => ref === 'local' ? localServer : ref;
@@ -73,13 +73,13 @@ function renderSend() {
   $('#broadcast').disabled = !connected || !hasContent || busy;
   $('#broadcast').textContent = sending ? 'Envoi…' : 'Envoyer';
   $('#preview-play').disabled = !hasContent || importing;
-  $('#save-preset').disabled = !hasContent || importing || presetBusy;
+  if ($('#save-preset')) $('#save-preset').disabled = !hasContent || importing;
   $('#attach-file').disabled = importing;
   $('#attach-audio').disabled = importing;
   $('#attach-file').textContent = importing ? 'Import…' : 'Image / vidéo';
   $('#attach-audio').textContent = audio ? 'Remplacer l’audio' : 'Ajouter un audio';
   $('#audio-replacement').hidden = !(visual?.kind === 'video' && audio);
-  $('#send-status').textContent = !connected ? 'Sélectionnez une room pour envoyer.' : importing ? 'Import et vérification du fichier…' : Date.now() < nextSend ? 'Patientez quelques secondes avant le prochain envoi.' : automatic ? 'Lecture après téléchargement complet. Fichiers supprimés du serveur après 10 min.' : 'Le compteur démarre après chargement. Fichiers supprimés du serveur après 10 min.';
+  $('#send-status').textContent = !connected ? 'Sélectionnez une room pour envoyer.' : importing ? 'Import et vérification du fichier…' : Date.now() < nextSend ? 'Patientez quelques secondes avant le prochain envoi.' : '';
   for (const button of document.querySelectorAll('[data-load-preset]')) button.disabled = !connected || importing || sending;
 }
 function currentReaction() {
@@ -106,8 +106,10 @@ function renderAttachments() {
   renderSend();
 }
 function renderLibrary() {
-  $('#existing-media').replaceChildren(new Option('Choisir un fichier', ''));
-  for (const asset of library) $('#existing-media').add(new Option(asset.name, asset.id));
+  const select = $('#existing-media');
+  if (!select) return;
+  select.replaceChildren(new Option('Choisir un fichier', ''));
+  for (const asset of library) select.add(new Option(asset.name, asset.id));
 }
 function renderSettings() {
   if (!recordingShortcut) $('#dismiss-shortcut').textContent = shortcutLabel(settings.dismissShortcut);
@@ -115,6 +117,7 @@ function renderSettings() {
   $('#disable-dismiss-shortcut').disabled = shortcutBusy || !settings.dismissShortcut;
   $('#auto-join').checked = client.autoJoin;
   $('#setting-paused').checked = settings.paused;
+  if ($('#setting-hide-self')) $('#setting-hide-self').checked = settings.hideSelf;
   for (const key of ['volume','size','cooldown','position','display']) $(`#setting-${key}`).value = settings[key];
   $('#volume-value').textContent = `${settings.volume} %`; $('#size-value').textContent = `${settings.size} %`; $('#cooldown-value').textContent = `${settings.cooldown} s`;
   $('#pause-reception').textContent = settings.paused ? 'Reprendre la réception' : 'Mettre en pause';
@@ -126,7 +129,8 @@ function handleEvent(event) {
   if (event.type === 'room-access') { room.access = event.access; renderRooms(); }
   if (event.type === 'access-changed') { if (target) delete target.joinToken; notify('Les accès de la room ont changé. Rejoignez-la à nouveau.'); }
   if (event.type === 'reaction') {
-    $('#last-received').textContent = `Dernier envoi : ${event.sender.name}`;
+    const isSelf = (room?.memberId && event.sender?.id === room.memberId) || (client?.nickname && event.sender?.name === client.nickname);
+    if (isSelf && settings.hideSelf) return;
     if (native && !settings.paused) {
       const now = Date.now() + connection.skew;
       native.show({ ...event, server: resolveServer(target.server), delay: Math.max(0, event.startAt - now), age: Math.max(0, now - event.startAt) }).catch(error => notify(error.message, true));
@@ -170,7 +174,7 @@ async function attemptJoin(currentEpoch, create) {
     client.rooms = [target, ...client.rooms.filter(entry => keyFor(entry) !== keyFor(target))];
     client.active = { code: target.code, server: target.server };
     const saved = await saveClient();
-    status = saved ? 'Connecté · room enregistrée' : 'Connecté · enregistrement local impossible';
+    status = saved ? 'Connecté' : 'Connecté · enregistrement local impossible';
     if (data.persistent !== true) notify('Ce serveur doit être mis à jour pour conserver ses rooms après un redémarrage.', true);
     renderRooms(); renderLibrary(); renderAttachments();
   } catch (error) {
@@ -342,7 +346,7 @@ $('#audio-input').addEventListener('change', event => { uploadFiles([...event.ta
 for (const type of ['dragenter','dragover']) $('#drop-zone').addEventListener(type, event => { event.preventDefault(); $('#drop-zone').classList.add('dragging'); });
 $('#drop-zone').addEventListener('dragleave', () => $('#drop-zone').classList.remove('dragging'));
 $('#drop-zone').addEventListener('drop', event => { event.preventDefault(); $('#drop-zone').classList.remove('dragging'); uploadFiles([...event.dataTransfer.files]); });
-$('#existing-media').addEventListener('change', event => { const asset = library.find(item => item.id === event.target.value); if (asset) attach(asset); event.target.value = ''; });
+$('#existing-media')?.addEventListener('change', event => { const asset = library.find(item => item.id === event.target.value); if (asset) attach(asset); event.target.value = ''; });
 function renderSubtitles() { $('#subtitle-label').textContent = cues.length ? `${cues.length} sous-titre(s)` : ''; $('#clear-subtitles').hidden = !cues.length; }
 $('#subtitle-button').addEventListener('click', () => $('#subtitle-input').click());
 $('#subtitle-input').addEventListener('change', async event => {
@@ -386,7 +390,7 @@ $('#dismiss-shortcut').addEventListener('click', async () => {
   try {
     await native.recordShortcut(true); recordingShortcut = true;
     $('#dismiss-shortcut').textContent = 'Appuyez sur les touches…';
-    $('#shortcut-hint').textContent = `Ctrl, Alt ou ${mac ? 'Cmd' : 'Windows'} + une touche, ou F1 à F24. Échap pour annuler.`;
+    $('#shortcut-hint').textContent = 'Appuyez sur une touche ou combinaison (ex: Fin, F9, Ctrl+Fin…). Échap pour annuler.';
   } catch (error) { $('#shortcut-hint').textContent = error.message; }
 });
 $('#disable-dismiss-shortcut').addEventListener('click', () => saveDismissShortcut(''));
@@ -396,12 +400,12 @@ window.addEventListener('blur', () => { if (recordingShortcut) void stopShortcut
 document.addEventListener('keydown', event => {
   if (!recordingShortcut) return;
   event.preventDefault(); event.stopPropagation();
-  if (event.key === 'Escape' || event.key === 'Tab') { void stopShortcutCapture(); return; }
+  if (event.key === 'Escape') { void stopShortcutCapture(); return; }
   if (event.repeat || ['Control','Alt','Shift','Meta'].includes(event.key)) return;
   const aliases = { ' ':'Space', ArrowUp:'Up', ArrowDown:'Down', ArrowLeft:'Left', ArrowRight:'Right' };
   const key = aliases[event.key] || (event.key.length === 1 ? event.key.toUpperCase() : event.key);
   const shortcut = [event.ctrlKey && 'Control', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Super', key].filter(Boolean).join('+');
-  if (!validDismissShortcut(shortcut)) { $('#shortcut-hint').textContent = 'Combinaison invalide. Ctrl + Maj + F8 reste réservé à la pause.'; return; }
+  if (!validDismissShortcut(shortcut)) { $('#shortcut-hint').textContent = 'Combinaison réservée. Ctrl + Maj + F8 reste réservé à la pause.'; return; }
   void saveDismissShortcut(shortcut);
 }, true);
 async function updateSettings(value) {
@@ -410,74 +414,172 @@ async function updateSettings(value) {
   if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {});
 }
 $('#pause-reception').addEventListener('click', () => updateSettings({ ...settings, paused:!settings.paused }));
-for (const [id, key] of [['setting-paused','paused'],['setting-volume','volume'],['setting-size','size'],['setting-cooldown','cooldown'],['setting-position','position'],['setting-display','display']]) {
-  $(`#${id}`).addEventListener('input', event => { const input = event.target; updateSettings({ ...settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
+for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideSelf'],['setting-volume','volume'],['setting-size','size'],['setting-cooldown','cooldown'],['setting-position','position'],['setting-display','display']]) {
+  $(`#${id}`)?.addEventListener('input', event => { const input = event.target; updateSettings({ ...settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
 }
 $('#test-overlay').addEventListener('click', async () => { if (native) { const result = await native.test(); if (!result.shown) notify('Reprenez la réception pour tester l’overlay.'); } });
 function showMessages(saved) {
   $('#send-form').hidden = saved; $('#presets-panel').hidden = !saved;
   $('#show-composer').setAttribute('aria-pressed', String(!saved)); $('#show-presets').setAttribute('aria-pressed', String(saved));
-  if (saved) renderPresets();
+  if (saved) void loadSavedMemes();
 }
-function renderPresets() {
-  $('#preset-count').textContent = String(presets.length);
-  const list = $('#presets-list'); list.replaceChildren();
-  const query = $('#preset-search').value.toLocaleLowerCase('fr');
-  const filtered = presets.filter(value => value.name.toLocaleLowerCase('fr').includes(query));
-  if (!filtered.length) list.append(node('p', presets.length ? 'Aucun message trouvé.' : 'Composez un message, puis cliquez sur Enregistrer.', 'muted note'));
-  for (const value of filtered) {
-    const row = node('div', undefined, 'preset-entry'), info = node('div', undefined, 'preset-info'), actions = node('div', undefined, 'preset-actions');
-    const kinds = [value.media?.kind === 'video' ? 'Vidéo' : value.media ? 'Image' : null, value.audio ? 'Audio' : null, value.caption ? 'Texte' : null].filter(Boolean).join(' + ');
-    info.append(node('strong', value.name), node('small', kinds, 'muted'));
-    if (value.caption) info.append(node('p', value.caption));
-    const load = node('button','Charger'); load.type = 'button'; load.dataset.loadPreset = value.id;
-    load.addEventListener('click', () => loadSavedMessage(value));
-    const rename = node('button','Renommer','text-button'); rename.type = 'button';
-    rename.addEventListener('click', () => openPresetDialog(value));
-    const remove = node('button','Supprimer','text-button'); remove.type = 'button';
-    remove.addEventListener('click', async () => {
-      remove.disabled = true;
-      try { await native.removePreset(value.id); presets = presets.filter(item => item.id !== value.id); renderPresets(); }
-      catch (error) { notify(error.message,true); remove.disabled = false; }
-    });
-    actions.append(load,rename,remove); row.append(info,actions); list.append(row);
-  }
-  renderSend();
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
-async function loadSavedMessage(value) {
-  if (!connected || importing || sending) return;
-  const currentEpoch = epoch, currentRoom = room, server = resolveServer(target.server);
-  importing = true; renderSend(); notify('Chargement du message et de ses fichiers…');
+async function loadSavedMemes() {
+  if (!native?.listSavedMemes) return;
   try {
-    const data = await native.loadPreset(value.id, server, currentRoom.token);
-    if (epoch !== currentEpoch || room !== currentRoom) return;
-    visual = data.media; audio = data.audio; cues = data.subtitles;
-    $('#caption').value = data.caption; $('#duration').value = String(data.duration);
-    for (const asset of [visual,audio].filter(Boolean)) if (!library.some(item => item.id === asset.id)) library.push(asset);
-    renderLibrary(); renderAttachments(); renderSubtitles(); showMessages(false); notify(`« ${value.name} » prêt à envoyer.`);
-  } catch (error) { notify(error.message,true); }
-  finally { importing = false; renderSend(); }
+    savedMemes = await native.listSavedMemes();
+    renderSavedMemes();
+  } catch (err) {
+    console.error('Failed to list saved memes:', err);
+  }
 }
-function openPresetDialog(value = null) {
-  editingPreset = value?.id || null;
-  $('#preset-dialog-title').textContent = value ? 'Renommer le message' : 'Enregistrer le message';
-  $('#preset-name').value = value?.name || $('#caption').value.trim().slice(0,60) || visual?.name || audio?.name || '';
-  $('#preset-error').textContent = ''; $('#preset-dialog').showModal(); $('#preset-name').focus();
+let memeToRename = null;
+function openRenameDialog(meme) {
+  memeToRename = meme;
+  const dialog = $('#rename-dialog');
+  const input = $('#rename-input');
+  const err = $('#rename-error');
+  if (!dialog || !input) return;
+  if (err) err.textContent = '';
+  input.value = meme.name;
+  dialog.showModal();
+  const lastDot = meme.name.lastIndexOf('.');
+  input.focus();
+  if (lastDot > 0) input.setSelectionRange(0, lastDot);
+  else input.select();
+}
+$('#rename-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!memeToRename) return;
+  const input = $('#rename-input');
+  const err = $('#rename-error');
+  const dialog = $('#rename-dialog');
+  const newName = (input?.value || '').trim();
+  if (!newName) {
+    if (err) err.textContent = 'Le nom ne peut pas être vide.';
+    return;
+  }
+  if (newName === memeToRename.name) {
+    dialog?.close();
+    return;
+  }
+  try {
+    await native.renameSavedMeme(memeToRename.name, newName);
+    dialog?.close();
+    notify('Mème renommé.');
+    await loadSavedMemes();
+  } catch (ex) {
+    if (err) err.textContent = ex.message;
+    else notify(ex.message, true);
+  }
+});
+function renderSavedMemes() {
+  $('#preset-count').textContent = String(savedMemes.length);
+  const grid = $('#saved-memes-grid');
+  if (!grid) return;
+  grid.replaceChildren();
+  const query = ($('#saved-search')?.value || '').trim().toLocaleLowerCase('fr');
+  const filtered = savedMemes.filter(item => item.name.toLocaleLowerCase('fr').includes(query));
+  if (!filtered.length) {
+    const emptyMsg = node('p', savedMemes.length ? 'Aucun mème ne correspond à votre recherche.' : 'Aucun mème enregistré pour le moment. Les mèmes reçus s’enregistrent automatiquement ici.', 'muted');
+    emptyMsg.style.gridColumn = '1 / -1';
+    emptyMsg.style.padding = '30px 10px';
+    emptyMsg.style.textAlign = 'center';
+    grid.append(emptyMsg);
+    return;
+  }
+  for (const meme of filtered) {
+    const card = node('div', undefined, 'saved-meme-card');
+    card.setAttribute('title', `${meme.name} (cliquer pour ouvrir)`);
+    const thumbBox = node('div', undefined, 'saved-meme-thumb-box');
+    if (meme.kind === 'image') {
+      const img = node('img', undefined, 'saved-meme-thumb');
+      img.src = meme.url;
+      img.alt = meme.name;
+      img.loading = 'lazy';
+      thumbBox.append(img);
+    } else if (meme.kind === 'video') {
+      const vid = node('video', undefined, 'saved-meme-thumb');
+      vid.src = `${meme.url}#t=0.001`;
+      vid.muted = true;
+      vid.preload = 'metadata';
+      thumbBox.append(vid);
+      thumbBox.append(node('span', 'VID', 'saved-meme-badge'));
+    } else if (meme.kind === 'audio') {
+      thumbBox.append(node('span', '🎵', 'saved-meme-icon'));
+      thumbBox.append(node('span', 'AUD', 'saved-meme-badge'));
+    } else {
+      thumbBox.append(node('span', '📁', 'saved-meme-icon'));
+    }
+    thumbBox.append(node('span', formatBytes(meme.size), 'saved-meme-size-badge'));
+
+    const name = node('span', meme.name, 'saved-meme-name');
+    name.setAttribute('title', meme.name);
+
+    const actions = node('div', undefined, 'saved-meme-actions');
+    const insertBtn = node('button', 'Insérer', 'saved-meme-btn-insert');
+    insertBtn.type = 'button';
+    insertBtn.setAttribute('title', 'Utiliser dans le compositeur');
+    insertBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!connected || !room) { notify('Rejoignez une room avant d’insérer un mème.'); return; }
+      try {
+        const fileData = await native.readSavedMeme(meme.name);
+        let mime = 'application/octet-stream';
+        const ext = meme.name.slice(meme.name.lastIndexOf('.')).toLowerCase();
+        if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
+        else if (ext === '.png') mime = 'image/png';
+        else if (ext === '.gif') mime = 'image/gif';
+        else if (ext === '.webp') mime = 'image/webp';
+        else if (ext === '.mp4') mime = 'video/mp4';
+        else if (ext === '.webm') mime = 'video/webm';
+        else if (ext === '.mp3') mime = 'audio/mpeg';
+        else if (ext === '.wav') mime = 'audio/wav';
+        else if (ext === '.ogg') mime = 'audio/ogg';
+        const file = new File([fileData.buffer], meme.name, { type: mime });
+        showMessages(false);
+        await uploadFiles([file]);
+      } catch (err) { notify(`Impossible de charger le fichier : ${err.message}`, true); }
+    });
+    const renameBtn = node('button', 'Renommer', 'saved-meme-btn-rename');
+    renameBtn.type = 'button';
+    renameBtn.setAttribute('title', 'Renommer ce mème');
+    renameBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      openRenameDialog(meme);
+    });
+    const delBtn = node('button', '✕', 'saved-meme-delete');
+    delBtn.type = 'button';
+    delBtn.setAttribute('title', 'Supprimer ce mème');
+    delBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer « ${meme.name} » ?`)) return;
+      try {
+        await native.deleteSavedMeme(meme.name);
+        savedMemes = savedMemes.filter(item => item.name !== meme.name);
+        renderSavedMemes();
+        notify(`« ${meme.name} » supprimé.`);
+      } catch (err) { notify(err.message, true); }
+    });
+    actions.append(insertBtn, renameBtn, delBtn);
+    card.append(thumbBox, name, actions);
+    card.addEventListener('click', () => {
+      if (native?.openSavedMemeFile) native.openSavedMemeFile(meme.name).catch(err => notify(err.message, true));
+    });
+    grid.append(card);
+  }
 }
 $('#show-composer').addEventListener('click', () => showMessages(false));
 $('#show-presets').addEventListener('click', () => showMessages(true));
-$('#preset-search').addEventListener('input',renderPresets);
-$('#new-message').addEventListener('click', () => { visual = null; audio = null; cues = []; $('#caption').value = ''; renderAttachments(); renderSubtitles(); showMessages(false); $('#caption').focus(); });
-$('#save-preset').addEventListener('click', () => openPresetDialog());
-$('#preset-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (presetBusy) return;
-  const id = editingPreset, name = $('#preset-name').value, reaction = currentReaction();
-  presetBusy = true; $('#preset-submit').disabled = true; $('#preset-submit').textContent = 'Enregistrement…'; $('#preset-error').textContent = ''; renderSend();
-  try {
-    if (id) await native.renamePreset(id,name); else await native.savePreset({ name,reaction });
-    presets = await native.listPresets(); renderPresets(); $('#preset-dialog').close(); notify('Message enregistré sur cet appareil.');
-  } catch (error) { $('#preset-error').textContent = error.message; if (!$('#preset-dialog').open) notify(error.message,true); }
-  finally { presetBusy = false; $('#preset-submit').disabled = false; $('#preset-submit').textContent = 'Enregistrer'; renderSend(); }
+$('#saved-search')?.addEventListener('input', renderSavedMemes);
+$('#open-saved-folder')?.addEventListener('click', async () => {
+  if (native?.openSavedMemesFolder) {
+    try { await native.openSavedMemesFolder(); } catch (err) { notify(err.message, true); }
+  }
 });
 async function init() {
   if (native) {
@@ -487,10 +589,11 @@ async function init() {
     if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
     client = cleanClientState(info.clientState || client);
     for (const display of info.displays) $('#setting-display').add(new Option(display.label, display.id));
-    $('#pause-reception').hidden = false; $('#device-note').textContent = 'Fermer la fenêtre conserve la réception en arrière-plan.';
+    $('#pause-reception').hidden = false;
     native.onSettings(value => { const pauseChanged = settings.paused !== value.paused; settings = value; renderSettings(); if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {}); });
     native.onError(message => notify(message, true));
-    presets = await native.listPresets(); renderPresets();
+    if (native.onSavedMemesUpdated) native.onSavedMemesUpdated(() => { void loadSavedMemes(); });
+    await loadSavedMemes();
   } else $('#reception-settings').hidden = true;
   renderRooms(); renderSettings(); renderLibrary();
   if (client.autoJoin && client.active) {

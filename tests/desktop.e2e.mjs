@@ -31,7 +31,7 @@ async function launch(name, port = '0') {
 async function close(instance) { await instance.app.close(); apps.delete(instance.app); }
 async function overlayState(instance) {
   return instance.app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows().find(value => value.getTitle() === 'MemeRoom Overlay');
+    const window = BrowserWindow.getAllWindows().find(value => value.getTitle() === 'evil memeroom Overlay' || value.getTitle() === 'MemeRoom Overlay');
     return { visible:window.isVisible(), focused:window.isFocused(), focusable:typeof window.isFocusable === 'function' ? window.isFocusable() : null, top:window.isAlwaysOnTop() };
   });
 }
@@ -62,7 +62,7 @@ async function assertCentered(instance) {
   });
   assert.ok(Math.abs(geometry.dx) <= 1 && Math.abs(geometry.dy) <= 1 && geometry.inside, `Visible media and text centered together: ${JSON.stringify(geometry)}`);
   const position = await instance.app.evaluate(({ BrowserWindow, screen }) => {
-    const bounds = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'MemeRoom Overlay').getBounds();
+    const bounds = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'evil memeroom Overlay' || w.getTitle() === 'MemeRoom Overlay').getBounds();
     const screenBounds = screen.getPrimaryDisplay().bounds;
     return { dx:bounds.x + bounds.width / 2 - screenBounds.x - screenBounds.width / 2, dy:bounds.y + bounds.height / 2 - screenBounds.y - screenBounds.height / 2 };
   });
@@ -124,7 +124,7 @@ try {
   const state = await overlayState(bob);
   if (state.focusable !== null) assert.equal(state.focusable,false);
   if (process.platform === 'linux') {
-    const windowId = await bob.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.getTitle() === 'MemeRoom Overlay').getNativeWindowHandle().readUInt32LE());
+    const windowId = await bob.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.getTitle() === 'evil memeroom Overlay' || w.getTitle() === 'MemeRoom Overlay').getNativeWindowHandle().readUInt32LE());
     // Electron implements focusable:false on X11 as an unmanaged window (WM_HINTS is absent).
     const attributes = execFileSync('xwininfo',['-id',String(windowId)],{ encoding:'utf8' });
     assert.match(attributes,/Override Redirect State: yes/);

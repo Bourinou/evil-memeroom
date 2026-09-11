@@ -23,7 +23,7 @@ try {
   // Simulate a game taking the topmost slot again while playback is in progress.
   const handles = await app.evaluate(({BrowserWindow}) => {
     const target=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='MemeRoom fullscreen test');
-    const overlay=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='MemeRoom Overlay');
+    const overlay=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='evil memeroom Overlay'||w.getTitle()==='MemeRoom Overlay');
     target.moveTop(); target.focus();
     return {target:target.getNativeWindowHandle().readBigUInt64LE().toString(),overlay:overlay.getNativeWindowHandle().readBigUInt64LE().toString(),fullscreen:target.isFullScreen()};
   });
@@ -31,7 +31,7 @@ try {
   await new Promise(r=>setTimeout(r,800));
   const state=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-File',path.resolve('tests/window-order.ps1'),'-OverlayHandle',handles.overlay,'-TargetHandle',handles.target],{encoding:'utf8',windowsHide:true}));
   assert.equal(state.above,true,'Overlay above fullscreen window after the game raises itself');
-  const focus=await app.evaluate(({BrowserWindow})=>({game:BrowserWindow.getAllWindows().find(w=>w.getTitle()==='MemeRoom fullscreen test').isFocused(),overlay:BrowserWindow.getAllWindows().find(w=>w.getTitle()==='MemeRoom Overlay').isFocused()}));
+  const focus=await app.evaluate(({BrowserWindow})=>({game:BrowserWindow.getAllWindows().find(w=>w.getTitle()==='MemeRoom fullscreen test').isFocused(),overlay:BrowserWindow.getAllWindows().find(w=>w.getTitle()==='evil memeroom Overlay'||w.getTitle()==='MemeRoom Overlay').isFocused()}));
   assert.deepEqual(focus,{game:true,overlay:false},'Fullscreen test window retains Electron focus');
   assert.equal(state.clickThrough,true,'Windows transparent input style');
   assert.equal(state.noActivate,true,'Windows nonactivating style');
