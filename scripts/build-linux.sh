@@ -23,6 +23,6 @@ if [[ "${1:-}" != --skip-checks ]]; then
   npm test
 fi
 npm run dist:linux
-cp -- release/*.AppImage "$source_dir/release/"
+cp -- release/*.AppImage release/*.deb release/*.pacman "$source_dir/release/" 2>/dev/null || cp -- release/*.AppImage "$source_dir/release/"
 cp -- release/latest-linux.yml "$source_dir/release/"
-echo "AppImage disponible dans $source_dir/release/"
+echo "Paquets Linux disponibles dans $source_dir/release/"

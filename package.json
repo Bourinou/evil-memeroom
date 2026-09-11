@@ -6,7 +6,7 @@
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",
-  "author": "Rose Roubaud",
+  "author": "Rose Roubaud <dimitripape1@gmail.com>",
   "license": "CC-BY-NC-SA-4.0",
   "scripts": {
     "start": "electron .",
@@ -15,8 +15,8 @@
     "test:desktop": "node tests/desktop.e2e.mjs",
     "check": "node scripts/check.mjs",
     "dist": "electron-builder --win nsis --x64 --publish never",
-    "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
-    "dist:mac": "electron-builder --mac zip --arm64 --x64 --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb pacman --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg zip --arm64 --x64 --publish never",
     "dist:dir": "electron-builder --win --dir --x64",
     "stage:releases": "node scripts/stage-releases.mjs",
     "pack:server": "node scripts/pack-server.mjs",
@@ -55,18 +55,29 @@
       "icon": "public/icon.ico"
     },
     "linux": {
-      "target": "AppImage",
+      "target": [
+        "AppImage",
+        "deb",
+        "pacman"
+      ],
+      "maintainer": "Bourinou <dimitripape1@gmail.com>",
       "category": "Network",
       "icon": "public/icon-linux.png",
       "executableName": "evil-memeroom",
       "syncDesktopName": true,
       "artifactName": "evil-memeroom-${version}-Linux-${arch}.${ext}"
     },
+    "deb": {
+      "maintainer": "Bourinou <dimitripape1@gmail.com>"
+    },
     "appImage": {
       "executableArgs": []
     },
     "mac": {
-      "target": "zip",
+      "target": [
+        "zip",
+        "dmg"
+      ],
       "category": "public.app-category.social-networking",
       "icon": "public/icon-mac.png",
       "identity": null,
