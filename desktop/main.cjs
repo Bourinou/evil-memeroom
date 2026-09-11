@@ -200,11 +200,56 @@ async function saveClient(value) {
   await clientSaving;
   return clientState;
 }
+async function applyAutoStart(enabled) {
+  if (!app.isPackaged) return;
+  try {
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      app.setLoginItemSettings({
+        openAtLogin: enabled,
+        openAsHidden: true,
+        args: ['--hidden']
+      });
+    } else if (process.platform === 'linux') {
+      try {
+        app.setLoginItemSettings({
+          openAtLogin: enabled,
+          openAsHidden: true,
+          args: ['--hidden']
+        });
+      } catch {}
+      const autostartDir = path.join(os.homedir(), '.config', 'autostart');
+      const desktopFilePath = path.join(autostartDir, 'evil-memeroom.desktop');
+      if (enabled) {
+        const execPath = process.env.APPIMAGE || process.execPath;
+        const desktopContent = [
+          '[Desktop Entry]',
+          'Type=Application',
+          'Version=1.0',
+          'Name=evil memeroom',
+          'Comment=Des réactions en direct, par-dessus votre écran.',
+          `Exec="${execPath}" --hidden`,
+          'StartupNotify=false',
+          'Terminal=false',
+          'Icon=evil-memeroom'
+        ].join('\n') + '\n';
+        await fs.mkdir(autostartDir, { recursive: true });
+        await fs.writeFile(desktopFilePath, desktopContent, 'utf8');
+      } else {
+        await fs.rm(desktopFilePath, { force: true });
+      }
+    }
+  } catch (error) {
+    console.warn('Configuration du démarrage automatique impossible :', error.message);
+  }
+}
+
 async function saveSettings(value, applyShortcut = false) {
   if (value.dismissShortcut !== undefined && !protocol.validDismissShortcut(value.dismissShortcut)) throw new Error('Raccourci invalide. Ctrl + Maj + F8 est réservé à la pause.');
   const next = protocol.cleanSettings(value);
   if (applyShortcut || next.dismissShortcut !== settings.dismissShortcut) { finishShortcutCapture(); bindDismissShortcut(next.dismissShortcut); }
+  const autoStartChanged = next.autoStart !== settings.autoStart;
   settings = next;
+  if (autoStartChanged) void applyAutoStart(settings.autoStart !== false);
   if (settings.paused) clearOverlay();
   else if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:volume', settings.volume);
   const snapshot = JSON.stringify(settings, null, 2);
@@ -296,12 +341,14 @@ async function displayReaction(payload, test = false) {
 }
 
 if (singleInstance) app.whenReady().then(async () => {
+  const isHiddenLaunch = process.argv.includes('--hidden') || process.argv.includes('--silent') || (app.isPackaged && Boolean(app.getLoginItemSettings?.().wasOpenedAsHidden));
   const { checkStartupUpdate } = require('./update-window.cjs');
-  const startupUpdate = await checkStartupUpdate({ app, BrowserWindow, ipcMain });
+  const startupUpdate = await checkStartupUpdate({ app, BrowserWindow, ipcMain, hidden: isHiddenLaunch });
   if (startupUpdate.installed) return;
   protocol = await import(pathToFileURL(path.join(__dirname, '../shared/protocol.mjs')).href);
   presets = new Presets(path.join(app.getPath('userData'), 'saved-messages'), protocol);
   try { settings = protocol.cleanSettings(JSON.parse(await fs.readFile(settingsPath(), 'utf8'))); } catch { settings = { ...protocol.DEFAULT_SETTINGS }; }
+  void applyAutoStart(settings.autoStart !== false);
   try { clientState = protocol.cleanClientState(JSON.parse(await fs.readFile(clientPath(), 'utf8'))); } catch (error) { if (error.code !== 'ENOENT') throw new Error('Impossible de lire les rooms enregistrées : ' + error.message); clientState = null; }
   const { createRoomServer } = await import(pathToFileURL(path.join(__dirname, '../server/index.mjs')).href);
   const dataDir = path.join(app.getPath('userData'), 'server');
@@ -323,7 +370,9 @@ if (singleInstance) app.whenReady().then(async () => {
   const fsSync = require('node:fs');
   const icon = nativeImage.createFromBuffer(fsSync.readFileSync(path.join(__dirname, '../public/icon-linux.png')));
   const windowIcon = nativeImage.createFromBuffer(fsSync.readFileSync(path.join(__dirname, '../public/icon-linux.png')));
-  control = new BrowserWindow({ title: 'evil memeroom', width: 860, height: 780, minWidth: 540, minHeight: 620, backgroundColor: '#0b0d10', autoHideMenuBar: true, icon: windowIcon, webPreferences: { session: controlSession, preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  Menu.setApplicationMenu(null);
+  control = new BrowserWindow({ title: 'evil memeroom', width: 860, height: 780, minWidth: 540, minHeight: 620, show: !isHiddenLaunch, backgroundColor: '#0b0d10', autoHideMenuBar: true, icon: windowIcon, webPreferences: { session: controlSession, preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  control.removeMenu();
   overlay = new BrowserWindow({ title: 'evil memeroom Overlay', width: 520, height: 420, show: false, frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false, alwaysOnTop: true, skipTaskbar: true, focusable: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false, webPreferences: { preload: path.join(__dirname, 'overlay-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' } });
   overlayLayer = createOverlayLayer(overlay);
   secureWindow(control); secureWindow(overlay);
@@ -450,7 +499,7 @@ if (singleInstance) app.whenReady().then(async () => {
   });
   ipcMain.on('overlay:error', (event, message, id) => { if (trustedOverlay(event) && id === generation) { clearOverlay(); control.webContents.send('overlay:error', protocol.cleanText(message, 160)); } });
   ipcMain.handle('app:minimize', event => { if (trustedControl(event)) { if (process.platform === 'linux') control.minimize(); else control.hide(); } });
-  tray = new Tray(icon); tray.on('double-click', () => { control.show(); control.focus(); }); updateTray();
+  tray = new Tray(icon); tray.on('click', () => { control.show(); control.focus(); }); tray.on('double-click', () => { control.show(); control.focus(); }); updateTray();
   control.on('close', event => { if (!quitting) { event.preventDefault(); if (process.platform === 'linux') control.minimize(); else control.hide(); } });
   control.on('blur', finishShortcutCapture);
   control.webContents.on('render-process-gone', () => { finishShortcutCapture(); clearOverlay(); control.reload(); });

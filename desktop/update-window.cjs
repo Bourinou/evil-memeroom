@@ -1,14 +1,15 @@
 const path = require('node:path');
 const { runStartupUpdate } = require('./startup-update.cjs');
 
-async function checkStartupUpdate({ app, BrowserWindow, ipcMain }) {
+async function checkStartupUpdate({ app, BrowserWindow, ipcMain, hidden = false }) {
   const disabled = process.env.MEMEROOM_DISABLE_UPDATES === '1';
   // Mac ZIPs are currently unsigned; Squirrel.Mac requires a signed application.
   if (!app.isPackaged || disabled || !['win32', 'linux'].includes(process.platform) || (process.platform === 'linux' && !process.env.APPIMAGE)) return { installed: false, close() {} };
   const { autoUpdater } = require('electron-updater');
   autoUpdater.logger = console;
   const controller = new AbortController();
-  const window = new BrowserWindow({ title: 'evil memeroom', width: 440, height: 260, resizable: false, maximizable: false, backgroundColor: '#0b0d10', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'update-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const window = new BrowserWindow({ title: 'evil memeroom', width: 440, height: 260, show: !hidden, resizable: false, maximizable: false, backgroundColor: '#0b0d10', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'update-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  window.removeMenu();
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.on('will-attach-webview', event => event.preventDefault());
