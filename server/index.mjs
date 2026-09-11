@@ -210,6 +210,14 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
         const member = ws.member, room = member && rooms.get(member.code);
         if (!room) throw new Error('Rejoignez une room pour continuer.');
         if (message.type === 'status') { member.paused = body.paused === true; presence(room); reply({}); return; }
+        if (message.type === 'rename') {
+          const name = cleanText(body.name, 24);
+          if (!name) throw new Error('Choisissez un pseudo.');
+          member.name = name;
+          presence(room);
+          reply({ name });
+          return;
+        }
         if (message.type === 'room-settings') {
           if (!member.owner && room.ownerHash) throw new Error('Seul le gestionnaire peut modifier cette room.');
           if (typeof body.isPrivate !== 'boolean' || !['keep', 'set', 'remove'].includes(body.passwordAction)) throw new Error('Réglages de room invalides.');

@@ -19,6 +19,7 @@ let mac = false;
 let savedMemes = [];
 const shortcutLabel = value => value ? value.split('+').map(key => ({ Control:'Ctrl', Shift:'Maj', Super:mac ? 'Cmd' : 'Windows', Space:'Espace', Up:'Haut', Down:'Bas', Left:'Gauche', Right:'Droite' }[key] || key)).join(' + ') : 'Choisir un raccourci';
 const keyFor = value => value ? `${value.server}|${value.code}` : '';
+const DEFAULT_SERVER = 'https://memeroom.tonamielarose.fr/';
 const resolveServer = ref => ref === 'local' ? localServer : ref;
 function referenceFor(url) {
   const parsed = new URL(url), local = new URL(localServer);
@@ -36,7 +37,28 @@ async function saveClient() {
   } catch { notify('Impossible d’enregistrer les rooms sur cet appareil.', true); return false; }
   return true;
 }
+function renderNickname() {
+  const nick = client.nickname || 'Anonyme';
+  if ($('#current-nickname')) $('#current-nickname').textContent = nick;
+  if ($('#settings-nickname')) $('#settings-nickname').value = client.nickname || '';
+}
+async function setNickname(newName) {
+  const clean = (newName || '').trim();
+  if (!clean) return;
+  client.nickname = clean;
+  renderNickname();
+  await saveClient();
+  if (connected && connection) {
+    try {
+      await connection.request('rename', { name: clean });
+    } catch {
+      if (target) attemptJoin(epoch, false).catch(() => {});
+    }
+  }
+  notify(`Pseudo mis à jour : ${clean}`);
+}
 function renderRooms() {
+  renderNickname();
   const select = $('#saved-room'); select.replaceChildren(new Option('Choisir une room', ''));
   for (const saved of client.rooms) select.add(new Option(saved.name, keyFor(saved)));
   select.value = keyFor(target);
@@ -67,7 +89,7 @@ function renderRooms() {
 function renderSend() {
   const automatic = hasTimedMedia({ media: visual, audio });
   $('#duration').hidden = automatic; $('#duration').disabled = automatic;
-  $('#duration-label').hidden = automatic; $('#automatic-duration').hidden = !automatic;
+  $('#duration-label').hidden = automatic; $('#duration-unit').hidden = automatic; $('#automatic-duration').hidden = !automatic;
   const hasContent = !!($('#caption').value.trim() || visual || audio);
   const busy = sending || importing || Date.now() < nextSend;
   $('#broadcast').disabled = !connected || !hasContent || busy;
@@ -212,7 +234,7 @@ function updateHostAddress() {
   $('#host-address').hidden = !ownServer || !addresses.length;
 }
 $('#add-room').addEventListener('click', () => {
-  $('#nickname').value = client.nickname; $('#server-url').value = resolveServer(target?.server || (native ? 'local' : location.origin));
+  $('#nickname').value = client.nickname; $('#server-url').value = (target?.server && target.server !== 'local') ? resolveServer(target.server) : DEFAULT_SERVER;
   $('#host-address').textContent = addresses.length ? `Adresse de ce PC pour vos amis : ${addresses.join(' ou ')}` : '';
   updateHostAddress();
   $('#room-password').value = ''; $('#join-code').value = ''; $('#new-room-name').value = ''; $('#room-visibility').value = 'private';
@@ -270,6 +292,21 @@ $('#copy-code').addEventListener('click', async () => {
   if (!target?.code) return;
   try { await navigator.clipboard.writeText(target.code); notify('Code copié.'); } catch { notify(`Code : ${target.code}`); }
 });
+$('#edit-nickname')?.addEventListener('click', () => {
+  $('#change-nickname-input').value = client.nickname || '';
+  $('#nickname-dialog')?.showModal();
+  $('#change-nickname-input')?.focus();
+});
+$('#nickname-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const val = $('#change-nickname-input').value;
+  await setNickname(val);
+  $('#nickname-dialog')?.close();
+});
+$('#save-settings-nickname')?.addEventListener('click', async () => {
+  const val = $('#settings-nickname').value;
+  await setNickname(val);
+});
 function showPasswordPrompt(message = '') {
   if (!target || $('#room-dialog').open) return;
   $('#password-room-name').textContent = target.name; $('#password-error').textContent = message; $('#saved-room-password').value = '';
@@ -306,10 +343,76 @@ $('#access-form').addEventListener('submit', async event => {
   finally { $('#access-submit').disabled = false; }
 });
 $('#caption').addEventListener('input', renderSend);
+function createSilentWavBlob(seconds) {
+  const sampleRate = 8000;
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const dataSize = Math.floor(seconds * byteRate);
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  function writeString(offset, string) {
+    for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+  }
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function uploadSilentAudio(durationSec) {
+  const blob = createSilentWavBlob(durationSec);
+  const file = new File([blob], 'silent_audio.wav', { type: 'audio/wav' });
+  const currentEpoch = epoch, currentRoom = room, server = resolveServer(target.server);
+  let response;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (currentEpoch !== epoch || room !== currentRoom) throw new Error('Connexion interrompue.');
+    response = await fetch(`${server}/api/media`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${currentRoom.token}`,
+        'Content-Type': 'application/octet-stream',
+        'X-Filename': encodeURIComponent(file.name)
+      },
+      body: file,
+      signal: AbortSignal.timeout(LIMITS.transferTimeoutMs)
+    });
+    if (response.status !== 429 || attempt === 2) break;
+    await response.arrayBuffer();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Impossible de créer la durée prolongée.');
+  return data;
+}
+
 $('#send-form').addEventListener('submit', async event => {
   event.preventDefault(); if ($('#broadcast').disabled) return;
   sending = true; renderSend();
-  try { await connection.request('broadcast', currentReaction()); nextSend = Date.now() + 3000; setTimeout(renderSend, 3050); notify('Envoyé.'); }
+  try {
+    const payload = currentReaction();
+    const durationVal = Number($('#duration').value);
+    if (!audio && visual?.kind !== 'video' && Number.isFinite(durationVal) && durationVal > LIMITS.durationMax) {
+      const silentAsset = await uploadSilentAudio(durationVal);
+      payload.audioId = silentAsset.id;
+      payload.audio = silentAsset;
+    }
+    await connection.request('broadcast', payload);
+    nextSend = Date.now() + 3000;
+    setTimeout(renderSend, 3050);
+    notify('Envoyé.');
+  }
   catch (error) { notify(error.message, true); }
   finally { sending = false; renderSend(); }
 });
@@ -575,6 +678,11 @@ function renderSavedMemes() {
 }
 $('#show-composer').addEventListener('click', () => showMessages(false));
 $('#show-presets').addEventListener('click', () => showMessages(true));
+$('#duration')?.addEventListener('change', () => {
+  const val = Number($('#duration').value);
+  if (!Number.isFinite(val) || val < 2) $('#duration').value = '2';
+  else if (val > 600) $('#duration').value = '600';
+});
 $('#saved-search')?.addEventListener('input', renderSavedMemes);
 $('#open-saved-folder')?.addEventListener('click', async () => {
   if (native?.openSavedMemesFolder) {

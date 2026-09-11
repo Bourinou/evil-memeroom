@@ -6,7 +6,7 @@
     <header><h1><img src="/icon.png" alt="" class="app-logo"><span>evil memeroom</span></h1><div class="row"><button id="pause-reception" hidden>Mettre en pause</button><button id="open-settings">Réglages</button></div></header>
     <section class="room-section" aria-label="Room">
       <div class="room-picker"><label for="saved-room">Room</label><div class="row"><select id="saved-room"><option value="">Choisir une room</option></select><button id="add-room">Ajouter une room</button></div></div>
-      <div class="room-info"><span id="connection-status" role="status">Aucune room sélectionnée.</span><button id="copy-code" class="text-button" hidden>Copier le code</button><button id="room-access" class="text-button" hidden>Accès de la room</button><button id="leave-room" class="text-button" hidden>Quitter</button></div>
+      <div class="room-info"><span id="connection-status" role="status">Aucune room sélectionnée.</span><span class="nickname-pill"><span class="nickname-label">Moi :</span> <button id="edit-nickname" type="button" class="text-button nickname-btn" title="Modifier votre pseudo dans la room"><strong id="current-nickname">…</strong> <span class="edit-hint">(modifier)</span></button></span><button id="copy-code" class="text-button" hidden>Copier le code</button><button id="room-access" class="text-button" hidden>Accès de la room</button><button id="leave-room" class="text-button" hidden>Quitter</button></div>
       <p id="members" class="muted" hidden></p>
     </section>
     <nav class="composer-tabs" aria-label="Messages"><button type="button" id="show-composer" aria-pressed="true">Composer</button><button type="button" id="show-presets" aria-pressed="false">Enregistrés <span id="preset-count">0</span></button></nav>
@@ -18,10 +18,10 @@
       <div id="attachments" class="attachments"></div>
       <p id="audio-replacement" class="muted" hidden>Le son de la vidéo sera remplacé par cet audio.</p>
       <div class="row subtitle-row"><button id="subtitle-button" type="button">Sous-titres .srt</button><span id="subtitle-label" class="muted"></span><button id="clear-subtitles" class="text-button" type="button" hidden>Retirer</button></div>
-      <div class="send-row"><label id="duration-label" for="duration">Durée</label><select id="duration"><option value="2">2 s</option><option value="3">3 s</option><option value="5" selected>5 s</option><option value="10">10 s</option><option value="15">15 s</option></select><span id="automatic-duration" class="muted" hidden>Durée automatique</span><div class="spacer"></div><button id="preview-play" type="button" disabled>Aperçu</button><button id="broadcast" type="submit" class="primary" disabled>Envoyer</button></div>
+      <div class="send-row"><label id="duration-label" for="duration">Durée</label><input id="duration" type="number" min="2" max="600" step="1" value="5"><span id="duration-unit" class="muted">s</span><span id="automatic-duration" class="muted" hidden>Durée automatique</span><div class="spacer"></div><button id="preview-play" type="button" disabled>Aperçu</button><button id="broadcast" type="submit" class="primary" disabled>Envoyer</button></div>
       <p id="send-status" class="muted" role="status">Sélectionnez une room pour envoyer.</p>
     </form>
-    <section id="presets-panel" class="composer" hidden aria-label="Mèmes enregistrés"><div class="composer-heading"><h2>Mèmes enregistrés</h2><button id="open-saved-folder" type="button">Ouvrir le dossier</button></div><p class="muted">Chaque mème reçu est conservé dans ~/memeroom sans doublon. Cliquez sur un mème pour le charger dans le compositeur.</p><label for="saved-search" class="search-label">Rechercher</label><input id="saved-search" type="search" placeholder="Nom du fichier…"><div id="saved-memes-grid" class="saved-memes-grid"></div></section>
+    <section id="presets-panel" class="composer" hidden aria-label="Mèmes enregistrés"><div class="composer-heading"><h2>Mèmes enregistrés</h2><button id="open-saved-folder" type="button">Ouvrir le dossier</button></div><div class="search-wrap"><label for="saved-search" class="search-label">Rechercher</label><input id="saved-search" type="search" placeholder="Nom du fichier…"></div><div id="saved-memes-grid" class="saved-memes-grid"></div></section>
   </main>
   <input id="file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm" hidden>
   <input id="audio-input" type="file" accept="audio/mpeg,audio/wav,audio/ogg" hidden>
@@ -30,7 +30,7 @@
     <div class="dialog-heading"><h2>Ajouter une room</h2><button type="button" data-close="room-dialog" aria-label="Fermer">Fermer</button></div>
     <div class="mode-buttons"><button id="mode-create" class="selected" type="button" aria-pressed="true">Créer</button><button id="mode-join" type="button" aria-pressed="false">Par code</button><button id="mode-browse" type="button" aria-pressed="false">Rooms du serveur</button></div>
     <label for="nickname">Votre pseudo</label><input id="nickname" maxlength="24" required autocomplete="nickname">
-    <label for="server-url">Serveur</label><input id="server-url" type="url" required placeholder="http://192.168.1.25:3210">
+    <label for="server-url">Serveur</label><input id="server-url" type="url" required value="https://memeroom.tonamielarose.fr/" placeholder="https://memeroom.tonamielarose.fr/">
     <p id="host-address" class="muted"></p>
     <div id="room-name-field"><label for="new-room-name">Nom de la room</label><input id="new-room-name" maxlength="40" placeholder="Ma room" required></div>
     <div id="room-visibility-field"><label for="room-visibility">Visibilité</label><select id="room-visibility"><option value="private">Privée · accessible par code</option><option value="public">Publique · visible dans la liste</option></select></div>
@@ -44,6 +44,8 @@
   <dialog id="access-dialog"><form id="access-form"><div class="dialog-heading"><h2>Accès de la room</h2><button type="button" data-close="access-dialog">Fermer</button></div><p id="access-legacy-note" class="muted" hidden>Cette ancienne room n’a pas encore de gestionnaire. En enregistrant ses accès, vous le deviendrez sur cet appareil.</p><label for="access-visibility">Visibilité</label><select id="access-visibility"><option value="private">Privée · accessible par code</option><option value="public">Publique · visible dans la liste</option></select><label for="access-password-action">Mot de passe</label><select id="access-password-action"><option value="keep">Conserver l’accès actuel</option><option value="set">Définir un nouveau mot de passe</option><option value="remove">Retirer le mot de passe</option></select><label id="access-password-label" for="access-password" hidden>Nouveau mot de passe</label><input id="access-password" type="password" maxlength="128" autocomplete="new-password" hidden><p class="muted note">Changer le mot de passe déconnecte les autres participants et vide les fichiers temporaires de la room. Ils devront la rejoindre à nouveau.</p><p id="access-error" class="error" role="alert"></p><button id="access-submit" class="primary wide" type="submit">Enregistrer</button></form></dialog>
   <dialog id="settings-dialog">
     <div class="dialog-heading"><h2>Réglages</h2><button data-close="settings-dialog">Fermer</button></div>
+    <label for="settings-nickname">Votre pseudo</label>
+    <div class="row" style="margin-bottom:12px;"><input id="settings-nickname" maxlength="24" autocomplete="nickname" placeholder="Votre pseudo…"><button id="save-settings-nickname" type="button">Enregistrer</button></div>
     <label class="check"><input id="setting-hide-self" type="checkbox">Ne pas afficher ce que j'envoie sur mon écran</label>
     <label class="check"><input id="auto-join" type="checkbox" checked>Rejoindre ma dernière room au démarrage</label>
     <section><h3>Rooms enregistrées</h3><div id="saved-rooms-list"></div><p class="muted">Retirer une room de cette liste ne la supprime pas pour les autres.</p></section>
@@ -58,6 +60,16 @@
       <button id="test-overlay">Tester l’overlay</button><p id="pause-shortcut-note" class="muted note">Pause rapide : Ctrl + Maj + F8</p>
     </section>
   </dialog>
+  <dialog id="nickname-dialog"><form id="nickname-form">
+    <div class="dialog-heading"><h2>Modifier votre pseudo</h2><button type="button" data-close="nickname-dialog">Fermer</button></div>
+    <label for="change-nickname-input">Nouveau pseudo</label>
+    <input id="change-nickname-input" maxlength="24" required autocomplete="nickname" placeholder="Entrez votre pseudo…">
+    <p class="muted note">Ce pseudo s'affichera dans la room au-dessus de vos messages.</p>
+    <div class="row" style="margin-top:16px;justify-content:flex-end;gap:10px;">
+      <button type="button" data-close="nickname-dialog">Annuler</button>
+      <button id="nickname-submit" class="primary" type="submit">Enregistrer</button>
+    </div>
+  </form></dialog>
   <dialog id="rename-dialog"><form id="rename-form"><div class="dialog-heading"><h2>Renommer le mème</h2><button type="button" data-close="rename-dialog">Fermer</button></div><label for="rename-input">Nom du fichier</label><input id="rename-input" type="text" maxlength="160" required autocomplete="off"><p id="rename-error" class="error" role="alert"></p><div class="row" style="margin-top:16px;justify-content:flex-end;gap:10px;"><button type="button" data-close="rename-dialog">Annuler</button><button id="rename-submit" class="primary" type="submit">Enregistrer</button></div></form></dialog>
   <dialog id="preview-dialog"><div class="dialog-heading"><h2>Aperçu</h2><button data-close="preview-dialog">Fermer</button></div><p id="preview-loading" class="muted" role="status">Téléchargement du contenu…</p><div id="large-preview"></div></dialog>
   <div id="toast" role="status" aria-live="polite" hidden></div>

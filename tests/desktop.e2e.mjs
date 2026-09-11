@@ -86,7 +86,7 @@ try {
   assert.equal(await alice.page.locator('.preset-art,.media-card').count(),0);
   assert.equal(await alice.page.locator('#broadcast').isDisabled(),true);
   await capture(alice.page,'simple-welcome.png',{ fullPage:true });
-  await alice.page.click('#add-room'); await alice.page.fill('#nickname','Alice'); await alice.page.fill('#new-room-name','Entre amis');
+  await alice.page.click('#add-room'); await alice.page.fill('#server-url', alice.server); await alice.page.fill('#nickname','Alice'); await alice.page.fill('#new-room-name','Entre amis');
   await alice.page.selectOption('#room-visibility','public'); await alice.page.fill('#room-password','first room password');
   await alice.page.click('#room-submit'); await connected(alice.page);
   const disk = JSON.parse(await readFile(path.join(alice.profile,'saved-rooms.json'),'utf8'));

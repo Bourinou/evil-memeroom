@@ -54,3 +54,25 @@ test('HTML and SVG uploads are refused even with image extensions',()=>{
   assert.equal(detectMedia(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>')),null);
   const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);assert.deepEqual(detectMedia(png),{mime:'image/png',kind:'image'});
 });
+test('silent WAV header is valid and recognized as audio/wav',()=>{
+  const sampleRate = 8000, numChannels = 1, bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const dataSize = Math.floor(20 * byteRate);
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(numChannels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(byteRate, 28);
+  buffer.writeUInt16LE(blockAlign, 32);
+  buffer.writeUInt16LE(bitsPerSample, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  assert.deepEqual(detectMedia(buffer), { mime: 'audio/wav', kind: 'audio' });
+});
+
