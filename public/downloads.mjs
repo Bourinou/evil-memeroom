@@ -7,7 +7,7 @@ try {
     const link = document.getElementById(`${platform}-download`);
     const info = document.getElementById(`${platform}-info`);
     if (!item) { info.textContent = 'Bientôt disponible'; continue; }
-    if (!/^\/releases\/MemeRoom-[A-Za-z0-9._-]+$/.test(item.url)) throw new Error('Lien de téléchargement invalide.');
+    if (!/^\/releases\/(?:evil-memeroom|MemeRoom)-[A-Za-z0-9._-]+$/.test(item.url)) throw new Error('Lien de téléchargement invalide.');
     link.href = item.url; link.setAttribute('download', ''); link.removeAttribute('aria-disabled');
     info.textContent = `Version ${item.version} · ${Math.round(item.bytes / 1024 / 1024)} Mo`;
   }
