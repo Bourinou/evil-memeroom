@@ -6,6 +6,18 @@ import { downloadFilenames } from './release-platforms.mjs';
 const versionPattern = '\\d+\\.\\d+\\.\\d+';
 const binaryPattern = new RegExp(`^MemeRoom-(?:Setup-${versionPattern}\\.exe(?:\\.blockmap)?|${versionPattern}-Linux-x86_64\\.AppImage|${versionPattern}-Mac-(?:arm64|x64)\\.zip)$`);
 export const releaseFilename = name => typeof name === 'string' && (binaryPattern.test(name) || ['latest.yml', 'latest-linux.yml'].includes(name));
+const DOWNLOAD_PLATFORMS = ['windows', 'linux', 'macArm64', 'macIntel'];
+
+export function parseByteRange(rangeHeader, totalSize) {
+  if (!rangeHeader) return { start: 0, end: totalSize - 1, status: 200 };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+  if (!match || (!match[1] && !match[2])) return null;
+  let start = 0, end = totalSize - 1;
+  if (!match[1]) start = Math.max(0, totalSize - Number(match[2]));
+  else { start = Number(match[1]); if (match[2]) end = Math.min(end, Number(match[2])); }
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= totalSize) return null;
+  return { start, end, status: 206 };
+}
 
 async function containedFile(directory, name) {
   const root = await realpath(directory);
@@ -19,7 +31,7 @@ export async function listDownloads(directory) {
   let manifest;
   try { manifest = JSON.parse(await readFile(await containedFile(directory, 'downloads.json'), 'utf8')); }
   catch { return result; }
-  for (const platform of Object.keys(result)) {
+  for (const platform of DOWNLOAD_PLATFORMS) {
     const item = manifest?.[platform];
     if (!item || !/^\d+\.\d+\.\d+$/.test(item.version)) continue;
     const expected = downloadFilenames(item.version)[platform];
@@ -46,21 +58,14 @@ export async function serveRelease(req, res, directory, name) {
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('Accept-Ranges', 'bytes');
     if (!metadata) res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
-    let start = 0, end = info.size - 1, status = 200;
-    if (req.headers.range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
-      if (match && (match[1] || match[2])) {
-        if (!match[1]) start = Math.max(0, info.size - Number(match[2]));
-        else { start = Number(match[1]); if (match[2]) end = Math.min(end, Number(match[2])); }
-      }
-      if (!match || !(match[1] || match[2]) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= info.size) {
-        res.writeHead(416, { 'Content-Range': `bytes */${info.size}` }); res.end(); return;
-      }
-      status = 206; res.setHeader('Content-Range', `bytes ${start}-${end}/${info.size}`);
+    const range = parseByteRange(req.headers.range, info.size);
+    if (!range) {
+      res.writeHead(416, { 'Content-Range': `bytes */${info.size}` }); res.end(); return;
     }
-    res.writeHead(status, { 'Content-Length': end - start + 1 });
+    if (range.status === 206) res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${info.size}`);
+    res.writeHead(range.status, { 'Content-Length': range.end - range.start + 1 });
     if (req.method === 'HEAD') res.end();
-    else await pipeline(handle.createReadStream({ start, end, autoClose: false }), res);
+    else await pipeline(handle.createReadStream({ start: range.start, end: range.end, autoClose: false }), res);
   } catch { if (!res.destroyed) res.destroy(); }
   finally { await handle.close(); }
 }

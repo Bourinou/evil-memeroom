@@ -12,7 +12,7 @@ import { inspectMedia } from './media-scan.mjs';
 import { PasswordLimiter, clientIP } from './password-limiter.mjs';
 import { makeMediaSpace } from './media-capacity.mjs';
 import { RoomStore } from './room-store.mjs';
-import { listDownloads, serveRelease } from './releases.mjs';
+import { listDownloads, serveRelease, parseByteRange } from './releases.mjs';
 import { secret, digest, hashPassword, verifyPassword, isOwner, issueJoinToken, validJoinToken, accessInfo, passwordError } from './room-access.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,6 +25,18 @@ const staticFiles = new Map([
   ['/styles.css', ['public/styles.css', 'text/css; charset=utf-8']],
   ['/favicon.svg', ['public/favicon.svg', 'image/svg+xml']]
 ]);
+const staticCache = new Map();
+async function getStaticFile(pathname) {
+  const meta = staticFiles.get(pathname);
+  if (!meta) return null;
+  let cached = staticCache.get(meta[0]);
+  if (!cached) {
+    const data = await readFile(path.join(root, meta[0]));
+    cached = { data, mime: meta[1], length: data.byteLength };
+    staticCache.set(meta[0], cached);
+  }
+  return cached;
+}
 const token = () => randomBytes(24).toString('base64url');
 const roomCode = () => Array.from(randomBytes(8), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
 const send = (ws, data) => { if (ws.readyState === WebSocket.OPEN) { if (ws.bufferedAmount > 1024 * 1024) ws.terminate(); else ws.send(JSON.stringify(data)); } };
@@ -120,22 +132,23 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
         res.setHeader('Content-Type', asset.mime);
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-        let start = 0, end = asset.bytes - 1, status = 200;
-        if (req.headers.range) {
-          const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
-          if (!match || (!match[1] && !match[2])) { res.writeHead(416, { 'Content-Range': `bytes */${asset.bytes}` }); res.end(); return; }
-          if (!match[1]) start = Math.max(0, asset.bytes - Number(match[2]));
-          else { start = Number(match[1]); if (match[2]) end = Math.min(end, Number(match[2])); }
-          if (start > end || start >= asset.bytes) { res.writeHead(416, { 'Content-Range': `bytes */${asset.bytes}` }); res.end(); return; }
-          status = 206; res.setHeader('Content-Range', `bytes ${start}-${end}/${asset.bytes}`);
-        }
-        res.writeHead(status, { 'Content-Length': end - start + 1 });
+        const range = parseByteRange(req.headers.range, asset.bytes);
+        if (!range) { res.writeHead(416, { 'Content-Range': `bytes */${asset.bytes}` }); res.end(); return; }
+        if (range.status === 206) res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${asset.bytes}`);
+        res.writeHead(range.status, { 'Content-Length': range.end - range.start + 1 });
         if (req.method === 'HEAD') res.end();
-        else await pipeline(createReadStream(asset.file, { start, end }), res);
+        else await pipeline(createReadStream(asset.file, { start: range.start, end: range.end }), res);
         return;
       }
-      const file = staticFiles.get(url.pathname);
-      if (req.method === 'GET' && file) { const data = await readFile(path.join(root, file[0])); res.writeHead(200, { 'Content-Type': file[1] }); res.end(data); return; }
+      if (['GET', 'HEAD'].includes(req.method)) {
+        const file = await getStaticFile(url.pathname);
+        if (file) {
+          res.writeHead(200, { 'Content-Type': file.mime, 'Content-Length': file.length });
+          if (req.method === 'HEAD') res.end();
+          else res.end(file.data);
+          return;
+        }
+      }
       json(res, 404, { error: 'Page introuvable.' });
     } catch (error) { if (!res.headersSent && !res.destroyed) json(res, error.status || 400, { error: error.status ? error.message : 'Impossible de traiter la requête.' }); }
   });
@@ -243,7 +256,7 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
         }
         if (message.type === 'broadcast') {
           if (now - room.lastBroadcast < cooldownMs) throw new Error('Une réaction vient de partir. Patientez 3 secondes.');
-          for (const id of [body.mediaId, body.audioId]) if (room.media.get(id)?.expiresAt <= Date.now()) throw new Error('Ce fichier a expiré. Importez-le à nouveau ou chargez un message enregistré.');
+          for (const id of [body.mediaId, body.audioId]) if (id && room.media.get(id)?.expiresAt <= Date.now()) throw new Error('Ce fichier a expiré. Importez-le à nouveau ou chargez un message enregistré.');
           const reaction = validateReaction(body, room.media);
           const event = { ...reaction, id: randomUUID(), sender: { id: member.id, name: member.name }, sentAt: now, startAt: now + 350, type: 'reaction' };
           room.lastBroadcast = now; room.lastActive = now;
@@ -272,7 +285,7 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
   return {
     server,
     async start() { for (const saved of store.load()) rooms.set(saved.code, makeRoom(saved.code, saved.name, saved)); await storage.start(); await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, () => { server.off('error', reject); resolve(); }); }); return server.address(); },
-    async stop() { clearInterval(sweep); for (const ws of wss.clients) ws.terminate(); await new Promise(resolve => wss.close(resolve)); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await storage.stop(); rooms.clear(); sessions.clear(); media.clear(); }
+    async stop() { clearInterval(sweep); for (const ws of wss.clients) ws.terminate(); await new Promise(resolve => wss.close(resolve)); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await storage.stop(); rooms.clear(); sessions.clear(); media.clear(); staticCache.clear(); }
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

@@ -6,7 +6,7 @@ let activeHashes = 0;
 export const secret = () => randomBytes(32).toString('base64url');
 export const digest = value => createHash('sha256').update(value).digest('hex');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-export function passwordInput(value = '') {
+function passwordInput(value = '') {
   if (typeof value !== 'string' || value.length > 128) throw new Error('Le mot de passe doit contenir au maximum 128 caractères.');
   return value;
 }

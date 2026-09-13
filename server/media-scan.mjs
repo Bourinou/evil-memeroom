@@ -5,6 +5,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mediaError } from './media-storage.mjs';
 const execute = promisify(execFile);
+const ZERO_CHUNK = Buffer.alloc(4);
+const ALLOWED_CODEC_TYPES = new Set(['video', 'audio']);
 
 // INSTREAM keeps the ClamAV service isolated from the application's filesystem.
 export async function scanClam(file, { host = process.env.CLAMAV_HOST, port = Number(process.env.CLAMAV_PORT || 3310), timeoutMs = 5 * 60 * 1000 } = {}) {
@@ -28,11 +30,13 @@ export async function scanClam(file, { host = process.env.CLAMAV_HOST, port = Nu
     await once(socket, 'connect');
     socket.write('zINSTREAM\0');
     const sending = (async () => {
+      const lenBuf = Buffer.alloc(4);
       for await (const chunk of input) {
-        const length = Buffer.alloc(4); length.writeUInt32BE(chunk.length);
-        if (!socket.write(Buffer.concat([length, chunk]))) await once(socket, 'drain');
+        lenBuf.writeUInt32BE(chunk.length);
+        socket.write(lenBuf);
+        if (!socket.write(chunk)) await once(socket, 'drain');
       }
-      socket.write(Buffer.alloc(4));
+      socket.write(ZERO_CHUNK);
       return result;
     })();
     const response = await Promise.race([sending, result]);
@@ -50,7 +54,7 @@ export async function inspectMedia(asset) {
     try {
       const { stdout } = await execute(process.env.MEMEROOM_FFPROBE, ['-v','error','-protocol_whitelist','file','-show_entries','stream=codec_type,width,height','-of','json',asset.file], { timeout:30000, maxBuffer:128 * 1024, windowsHide:true });
       const streams = JSON.parse(stdout).streams;
-      if (!streams?.length || streams.some(s => !['video','audio'].includes(s.codec_type) || (s.width || 1) * (s.height || 1) > 100000000)) throw new Error('Invalid streams');
+      if (!streams?.length || streams.some(s => !ALLOWED_CODEC_TYPES.has(s.codec_type) || (s.width || 1) * (s.height || 1) > 100000000)) throw new Error('Invalid streams');
       if (!streams.some(s => s.codec_type === (asset.kind === 'audio' ? 'audio' : 'video'))) throw new Error('Wrong media kind');
     } catch { throw mediaError('Le fichier est illisible, contient des pistes non autorisées ou dépasse les limites de décodage.', 415); }
   }
