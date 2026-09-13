@@ -75,14 +75,22 @@ export function mountReaction(container, reaction, { volume = 0, autoplay = fals
       }, 1000);
       checkEnded();
     } else timer = setTimeout(finish, reaction.duration * 1000);
-    const tick = () => {
-      if (dead || completed) return;
-      const elapsed = players.length ? Math.max(...players.map(player => player.currentTime)) : (performance.now() - startedAt) / 1000;
-      const cue = reaction.subtitles?.find(c => elapsed >= c.start && elapsed < c.end);
-      caption.textContent = cue?.text || reaction.caption || ''; caption.hidden = !caption.textContent;
-      animation = requestAnimationFrame(tick);
-    };
-    tick();
+    if (reaction.subtitles?.length) {
+      let currentText = caption.textContent;
+      const tick = () => {
+        if (dead || completed) return;
+        const elapsed = players.length ? Math.max(...players.map(player => player.currentTime)) : (performance.now() - startedAt) / 1000;
+        const cue = reaction.subtitles.find(c => elapsed >= c.start && elapsed < c.end);
+        const text = cue?.text || reaction.caption || '';
+        if (text !== currentText) {
+          currentText = text;
+          caption.textContent = text;
+          caption.hidden = !text;
+        }
+        animation = requestAnimationFrame(tick);
+      };
+      tick();
+    }
   }
   void start().catch(fail);
   return {

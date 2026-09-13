@@ -1,5 +1,14 @@
 const path = require('node:path');
+const os = require('node:os');
 const { readFile } = require('node:fs/promises');
+
+const MEMEROOM_DIR = path.join(os.homedir(), 'memeroom');
+const MIMES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.webp': 'image/webp',
+  '.mp4': 'video/mp4', '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg'
+};
 
 // This origin is resolved inside the control window's private Electron session.
 // No HTTP server or public route serves the remote control.
@@ -23,7 +32,6 @@ function installControlPage(controlSession) {
       // Room API requests still use the network, with their body and headers intact.
       return controlSession.fetch(request, { bypassCustomProtocolHandlers: true });
     }
-    const MEMEROOM_DIR = path.join(require('node:os').homedir(), 'memeroom');
     if (url.pathname.startsWith('/saved-memes/')) {
       const rawName = decodeURIComponent(url.pathname.slice('/saved-memes/'.length));
       const safeName = path.basename(rawName);
@@ -31,13 +39,7 @@ function installControlPage(controlSession) {
       const target = path.join(MEMEROOM_DIR, safeName);
       try {
         const ext = path.extname(safeName).toLowerCase();
-        const mimes = {
-          '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-          '.gif': 'image/gif', '.webp': 'image/webp',
-          '.mp4': 'video/mp4', '.webm': 'video/webm',
-          '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg'
-        };
-        const contentType = mimes[ext] || 'application/octet-stream';
+        const contentType = MIMES[ext] || 'application/octet-stream';
         const headers = { 'Content-Type': contentType, 'Content-Security-Policy': csp, 'Cache-Control': 'max-age=3600', 'Accept-Ranges': 'bytes' };
         const data = await readFile(target);
         return new Response(request.method === 'HEAD' ? null : data, { headers });

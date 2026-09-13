@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, globalShortcut, session, dialog, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
+const { createReadStream } = fsSync;
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
 const crypto = require('node:crypto');
@@ -12,7 +14,9 @@ const { createOverlayLayer } = require('./overlay-layer.cjs');
 const MEMEROOM_DIR = path.join(os.homedir(), 'memeroom');
 fs.mkdir(MEMEROOM_DIR, { recursive: true }).catch(() => {});
 
-const { createReadStream } = require('node:fs');
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+const VIDEO_EXTS = new Set(['.mp4', '.webm']);
+const AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg']);
 
 const hashCachePath = () => path.join(app.getPath('userData'), 'memeroom-hashes.json');
 const memeHashCache = new Map(); // filename -> { size, mtime, hash }
@@ -148,7 +152,6 @@ if (process.env.MEMEROOM_USER_DATA) {
   app.setPath('userData', path.resolve(process.env.MEMEROOM_USER_DATA));
 } else {
   try {
-    const fsSync = require('node:fs');
     const legacyDir = path.join(app.getPath('appData'), 'memeroom');
     const newDir = path.join(app.getPath('appData'), app.name);
     if (fsSync.existsSync(legacyDir) && !fsSync.existsSync(newDir)) {
@@ -367,9 +370,8 @@ if (singleInstance) app.whenReady().then(async () => {
     currentSession.setPermissionCheckHandler(() => false);
     currentSession.on('will-download', event => event.preventDefault());
   }
-  const fsSync = require('node:fs');
-  const icon = nativeImage.createFromBuffer(fsSync.readFileSync(path.join(__dirname, '../public/icon-linux.png')));
-  const windowIcon = nativeImage.createFromBuffer(fsSync.readFileSync(path.join(__dirname, '../public/icon-linux.png')));
+  const icon = nativeImage.createFromPath(path.join(__dirname, '../public/icon-linux.png'));
+  const windowIcon = icon;
   Menu.setApplicationMenu(null);
   control = new BrowserWindow({ title: 'evil memeroom', width: 860, height: 780, minWidth: 540, minHeight: 620, show: !isHiddenLaunch, backgroundColor: '#0b0d10', autoHideMenuBar: true, icon: windowIcon, webPreferences: { session: controlSession, preload: path.join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   control.removeMenu();
@@ -391,28 +393,26 @@ if (singleInstance) app.whenReady().then(async () => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
     await fs.mkdir(MEMEROOM_DIR, { recursive: true });
     const entries = await fs.readdir(MEMEROOM_DIR, { withFileTypes: true });
-    const imageExts = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
-    const videoExts = new Set(['.mp4', '.webm']);
-    const audioExts = new Set(['.mp3', '.wav', '.ogg']);
-    const items = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || entry.name.startsWith('.') || entry.name.startsWith('silent_')) continue;
+    const eligible = entries.filter(entry => entry.isFile() && !entry.name.startsWith('.') && !entry.name.startsWith('silent_'));
+    const items = (await Promise.all(eligible.map(async entry => {
       const ext = path.extname(entry.name).toLowerCase();
       let kind = 'other';
-      if (imageExts.has(ext)) kind = 'image';
-      else if (videoExts.has(ext)) kind = 'video';
-      else if (audioExts.has(ext)) kind = 'audio';
+      if (IMAGE_EXTS.has(ext)) kind = 'image';
+      else if (VIDEO_EXTS.has(ext)) kind = 'video';
+      else if (AUDIO_EXTS.has(ext)) kind = 'audio';
       try {
         const stat = await fs.stat(path.join(MEMEROOM_DIR, entry.name));
-        items.push({
+        return {
           name: entry.name,
           size: stat.size,
           mtime: stat.mtimeMs,
           kind,
           url: `/saved-memes/${encodeURIComponent(entry.name)}`
-        });
-      } catch {}
-    }
+        };
+      } catch {
+        return null;
+      }
+    }))).filter(Boolean);
     items.sort((a, b) => b.mtime - a.mtime);
     return items;
   });

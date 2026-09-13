@@ -17,6 +17,7 @@ let status = 'Aucune room sélectionnée.';
 let recordingShortcut = false, shortcutBusy = false;
 let mac = false;
 let savedMemes = [];
+const SAVED_MIME_TYPES = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.gif':'image/gif', '.webp':'image/webp', '.mp4':'video/mp4', '.webm':'video/webm', '.mp3':'audio/mpeg', '.wav':'audio/wav', '.ogg':'audio/ogg' };
 const shortcutLabel = value => value ? value.split('+').map(key => ({ Control:'Ctrl', Shift:'Maj', Super:mac ? 'Cmd' : 'Windows', Space:'Espace', Up:'Haut', Down:'Bas', Left:'Gauche', Right:'Droite' }[key] || key)).join(' + ') : 'Choisir un raccourci';
 const keyFor = value => value ? `${value.server}|${value.code}` : '';
 const DEFAULT_SERVER = 'https://memeroom.tonamielarose.fr/';
@@ -95,14 +96,12 @@ function renderSend() {
   $('#broadcast').disabled = !connected || !hasContent || busy;
   $('#broadcast').textContent = sending ? 'Envoi…' : 'Envoyer';
   $('#preview-play').disabled = !hasContent || importing;
-  if ($('#save-preset')) $('#save-preset').disabled = !hasContent || importing;
   $('#attach-file').disabled = importing;
   $('#attach-audio').disabled = importing;
   $('#attach-file').textContent = importing ? 'Import…' : 'Image / vidéo';
   $('#attach-audio').textContent = audio ? 'Remplacer l’audio' : 'Ajouter un audio';
   $('#audio-replacement').hidden = !(visual?.kind === 'video' && audio);
   $('#send-status').textContent = !connected ? 'Sélectionnez une room pour envoyer.' : importing ? 'Import et vérification du fichier…' : Date.now() < nextSend ? 'Patientez quelques secondes avant le prochain envoi.' : '';
-  for (const button of document.querySelectorAll('[data-load-preset]')) button.disabled = !connected || importing || sending;
 }
 function currentReaction() {
   return { caption: $('#caption').value, sender: client.nickname, mediaId: visual?.id || null, audioId: audio?.id || null, media: visual, audio, duration: Number($('#duration').value), subtitles: cues, server: resolveServer(target?.server || 'local') };
@@ -372,10 +371,8 @@ function createSilentWavBlob(seconds) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-async function uploadSilentAudio(durationSec) {
-  const blob = createSilentWavBlob(durationSec);
-  const file = new File([blob], 'silent_audio.wav', { type: 'audio/wav' });
-  const currentEpoch = epoch, currentRoom = room, server = resolveServer(target.server);
+async function uploadMedia(file, currentEpoch, currentRoom) {
+  const server = resolveServer(target.server);
   let response;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (currentEpoch !== epoch || room !== currentRoom) throw new Error('Connexion interrompue.');
@@ -394,8 +391,14 @@ async function uploadSilentAudio(durationSec) {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Impossible de créer la durée prolongée.');
+  if (!response.ok) throw new Error(data.error || 'Import impossible.');
   return data;
+}
+
+async function uploadSilentAudio(durationSec) {
+  const blob = createSilentWavBlob(durationSec);
+  const file = new File([blob], 'silent_audio.wav', { type: 'audio/wav' });
+  return uploadMedia(file, epoch, room);
 }
 
 $('#send-form').addEventListener('submit', async event => {
@@ -421,18 +424,11 @@ function attach(asset) { if (asset.kind === 'audio') audio = asset; else visual 
 async function uploadFiles(files) {
   if (importing) return;
   if (!connected || !room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
-  importing = true; renderSend(); const currentEpoch = epoch, currentRoom = room, server = resolveServer(target.server);
+  importing = true; renderSend(); const currentEpoch = epoch, currentRoom = room;
   try {
     for (const file of files.slice(0, 2)) {
       if (file.size > LIMITS.uploadBytes) throw new Error(`${file.name} dépasse 1 Go.`);
-      let response;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (currentEpoch !== epoch || room !== currentRoom) return;
-        response = await fetch(`${server}/api/media`, { method:'POST', headers:{ Authorization:`Bearer ${currentRoom.token}`, 'Content-Type':'application/octet-stream', 'X-Filename':encodeURIComponent(file.name) }, body:file, signal:AbortSignal.timeout(LIMITS.transferTimeoutMs) });
-        if (response.status !== 429 || attempt === 2) break;
-        await response.arrayBuffer(); await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Import impossible.');
+      const data = await uploadMedia(file, currentEpoch, currentRoom);
       if (currentEpoch !== epoch || room !== currentRoom) return;
       if (!library.some(asset => asset.id === data.id)) library.push(data);
       attach(data); renderLibrary();
@@ -585,6 +581,7 @@ function renderSavedMemes() {
   $('#preset-count').textContent = String(savedMemes.length);
   const grid = $('#saved-memes-grid');
   if (!grid) return;
+  for (const player of grid.querySelectorAll('video')) { player.pause(); player.removeAttribute('src'); player.load(); }
   grid.replaceChildren();
   const query = ($('#saved-search')?.value || '').trim().toLocaleLowerCase('fr');
   const filtered = savedMemes.filter(item => item.name.toLocaleLowerCase('fr').includes(query));
@@ -633,17 +630,8 @@ function renderSavedMemes() {
       if (!connected || !room) { notify('Rejoignez une room avant d’insérer un mème.'); return; }
       try {
         const fileData = await native.readSavedMeme(meme.name);
-        let mime = 'application/octet-stream';
         const ext = meme.name.slice(meme.name.lastIndexOf('.')).toLowerCase();
-        if (['.jpg', '.jpeg'].includes(ext)) mime = 'image/jpeg';
-        else if (ext === '.png') mime = 'image/png';
-        else if (ext === '.gif') mime = 'image/gif';
-        else if (ext === '.webp') mime = 'image/webp';
-        else if (ext === '.mp4') mime = 'video/mp4';
-        else if (ext === '.webm') mime = 'video/webm';
-        else if (ext === '.mp3') mime = 'audio/mpeg';
-        else if (ext === '.wav') mime = 'audio/wav';
-        else if (ext === '.ogg') mime = 'audio/ogg';
+        const mime = SAVED_MIME_TYPES[ext] || 'application/octet-stream';
         const file = new File([fileData.buffer], meme.name, { type: mime });
         showMessages(false);
         await uploadFiles([file]);
@@ -684,7 +672,11 @@ $('#duration')?.addEventListener('change', () => {
   if (!Number.isFinite(val) || val < 1) $('#duration').value = '1';
   else if (val > 600) $('#duration').value = '600';
 });
-$('#saved-search')?.addEventListener('input', renderSavedMemes);
+let searchDebounceTimer;
+$('#saved-search')?.addEventListener('input', () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(renderSavedMemes, 120);
+});
 $('#open-saved-folder')?.addEventListener('click', async () => {
   if (native?.openSavedMemesFolder) {
     try { await native.openSavedMemesFolder(); } catch (err) { notify(err.message, true); }

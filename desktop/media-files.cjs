@@ -5,6 +5,12 @@ const { pipeline } = require('node:stream/promises');
 const MAX_BYTES = 1024 ** 3;
 const TRANSFER_MS = 30 * 60 * 1000;
 
+let detectMediaPromise;
+const getDetectMedia = () => {
+  if (!detectMediaPromise) detectMediaPromise = import('../server/media.mjs').then(m => m.detectMedia);
+  return detectMediaPromise;
+};
+
 function assetURL(asset, server) {
   const base = new URL(server);
   if (!['http:','https:'].includes(base.protocol) || base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new Error('Serveur invalide.');
@@ -25,7 +31,7 @@ async function downloadAsset(asset, server, destination, signal) {
     const fd = await open(destination, 'r');
     let header;
     try { header = Buffer.alloc(4096); const read = await fd.read(header, 0, 4096, 0); header = header.subarray(0, read.bytesRead); } finally { await fd.close(); }
-    const { detectMedia } = await import('../server/media.mjs');
+    const detectMedia = await getDetectMedia();
     const format = detectMedia(header);
     if (!format || format.kind !== asset.kind || (Number.isFinite(asset.bytes) && asset.bytes !== bytes)) throw new Error('Fichier incomplet ou format incorrect.');
     return { name:String(asset.name || 'Média').slice(0,80), bytes, ...format };
