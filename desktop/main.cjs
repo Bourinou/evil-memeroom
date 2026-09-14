@@ -1,4 +1,23 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, globalShortcut, session, dialog, shell } = require('electron');
+
+if (
+  process.platform === 'linux' &&
+  !process.env.MEMEROOM_USER_DATA &&
+  (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland') &&
+  !process.argv.some(arg => arg.startsWith('--ozone-platform='))
+) {
+  const { spawn } = require('node:child_process');
+  const args = process.defaultApp
+    ? ['--ozone-platform=x11', process.argv[1] || '.', ...process.argv.slice(2)]
+    : ['--ozone-platform=x11', ...process.argv.slice(1)];
+  const child = spawn(process.execPath, args, {
+    stdio: 'inherit',
+    env: { ...process.env, ELECTRON_OZONE_PLATFORM_HINT: 'x11' }
+  });
+  child.on('close', code => process.exit(code || 0));
+  return;
+}
+
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -167,7 +186,10 @@ if (process.env.MEMEROOM_USER_DATA) {
 }
 migrateUserDataHashes(app.getPath('userData'));
 const singleInstance = process.env.MEMEROOM_ALLOW_MULTIPLE === '1' || app.requestSingleInstanceLock();
-if (!singleInstance) app.quit();
+if (!singleInstance) {
+  app.quit();
+  return;
+}
 let control, overlay, tray, localServer, baseUrl, settings, clientState, protocol, quitting = false, hideTimer, lastShown = 0, generation = 0;
 const seen = new Set();
 let dismissShortcut = '', shortcutError = '', shortcutCaptureTimer;
@@ -237,7 +259,7 @@ async function applyAutoStart(enabled) {
           'Version=1.0',
           'Name=evil memeroom',
           'Comment=Des réactions en direct, par-dessus votre écran.',
-          `Exec="${execPath}" --hidden`,
+          `Exec="${execPath}" --ozone-platform=x11 --hidden`,
           'StartupNotify=false',
           'Terminal=false',
           'Icon=evil-memeroom'
@@ -558,8 +580,19 @@ if (singleInstance) app.whenReady().then(async () => {
   await overlay.loadFile(path.join(__dirname, 'overlay.html'));
   await control.loadURL(CONTROL_URL);
   startupUpdate.close();
+  if (!isHiddenLaunch && control && !control.isDestroyed()) {
+    if (control.isMinimized()) control.restore();
+    control.show();
+    control.focus();
+  }
 }).catch(error => { dialog.showErrorBox('evil memeroom', `Impossible de démarrer : ${error.message}`); quitting = true; app.quit(); });
-app.on('second-instance', () => { if (control) { if (control.isMinimized()) control.restore(); control.show(); control.focus(); } });
+app.on('second-instance', () => {
+  if (control && !control.isDestroyed()) {
+    if (control.isMinimized()) control.restore();
+    control.show();
+    control.focus();
+  }
+});
 app.on('activate', () => { if (control && !control.isDestroyed()) { if (control.isMinimized()) control.restore(); control.show(); control.focus(); } });
 app.on('before-quit', () => { quitting = true; clearOverlay(); globalShortcut.unregisterAll(); if (localServer) void localServer.stop(); });
 app.on('window-all-closed', () => app.quit());
