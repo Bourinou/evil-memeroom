@@ -10,15 +10,22 @@ const { CONTROL_URL, installControlPage } = require('./control-page.cjs');
 const { downloadAsset } = require('./media-files.cjs');
 const { Presets } = require('./presets.cjs');
 const { createOverlayLayer } = require('./overlay-layer.cjs');
+const {
+  migrateMemesDir,
+  migrateUserData,
+  migrateUserDataHashes,
+  cleanupLegacyFolders
+} = require('./migration.cjs');
 
-const MEMEROOM_DIR = path.join(os.homedir(), 'memeroom');
+migrateMemesDir();
+const MEMEROOM_DIR = path.join(os.homedir(), 'evil-memeroom');
 fs.mkdir(MEMEROOM_DIR, { recursive: true }).catch(() => {});
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm']);
 const AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg']);
 
-const hashCachePath = () => path.join(app.getPath('userData'), 'memeroom-hashes.json');
+const hashCachePath = () => path.join(app.getPath('userData'), 'hashes.json');
 const memeHashCache = new Map(); // filename -> { size, mtime, hash }
 const hashToFilename = new Map(); // hash -> filename
 let hashCacheLoaded = false;
@@ -34,7 +41,11 @@ async function loadHashCache() {
         hashToFilename.set(info.hash, filename);
       }
     }
-  } catch {}
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      await fs.rm(hashCachePath(), { force: true }).catch(() => {});
+    }
+  }
   hashCacheLoaded = true;
 }
 
@@ -151,14 +162,10 @@ app.name = 'evil-memeroom';
 if (process.env.MEMEROOM_USER_DATA) {
   app.setPath('userData', path.resolve(process.env.MEMEROOM_USER_DATA));
 } else {
-  try {
-    const legacyDir = path.join(app.getPath('appData'), 'memeroom');
-    const newDir = path.join(app.getPath('appData'), app.name);
-    if (fsSync.existsSync(legacyDir) && !fsSync.existsSync(newDir)) {
-      app.setPath('userData', legacyDir);
-    }
-  } catch {}
+  migrateUserData(app.getPath('appData'), app.name);
+  cleanupLegacyFolders();
 }
+migrateUserDataHashes(app.getPath('userData'));
 const singleInstance = process.env.MEMEROOM_ALLOW_MULTIPLE === '1' || app.requestSingleInstanceLock();
 if (!singleInstance) app.quit();
 let control, overlay, tray, localServer, baseUrl, settings, clientState, protocol, quitting = false, hideTimer, lastShown = 0, generation = 0;
@@ -237,8 +244,10 @@ async function applyAutoStart(enabled) {
         ].join('\n') + '\n';
         await fs.mkdir(autostartDir, { recursive: true });
         await fs.writeFile(desktopFilePath, desktopContent, 'utf8');
+        await fs.rm(path.join(autostartDir, 'memeroom.desktop'), { force: true }).catch(() => {});
       } else {
         await fs.rm(desktopFilePath, { force: true });
+        await fs.rm(path.join(autostartDir, 'memeroom.desktop'), { force: true }).catch(() => {});
       }
     }
   } catch (error) {
@@ -310,7 +319,7 @@ async function displayReaction(payload, test = false) {
   let directory;
   try {
     if (reaction.media || reaction.audio) {
-      directory = await fs.mkdtemp(path.join(os.tmpdir(), 'memeroom-playback-'));
+      directory = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-memeroom-playback-'));
       if (generation !== currentGeneration || abort.signal.aborted) throw new Error('cancelled');
       playbackDirectory = directory;
       for (const key of ['media','audio']) if (reaction[key]) {
@@ -350,20 +359,56 @@ if (singleInstance) app.whenReady().then(async () => {
   if (startupUpdate.installed) return;
   protocol = await import(pathToFileURL(path.join(__dirname, '../shared/protocol.mjs')).href);
   presets = new Presets(path.join(app.getPath('userData'), 'saved-messages'), protocol);
-  try { settings = protocol.cleanSettings(JSON.parse(await fs.readFile(settingsPath(), 'utf8'))); } catch { settings = { ...protocol.DEFAULT_SETTINGS }; }
+  try {
+    settings = protocol.cleanSettings(JSON.parse(await fs.readFile(settingsPath(), 'utf8')));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('Fichier preferences.json corrompu ou illisible, réinitialisation à zéro :', error?.message);
+      await fs.rm(settingsPath(), { force: true }).catch(() => {});
+    }
+    settings = { ...protocol.DEFAULT_SETTINGS };
+  }
   void applyAutoStart(settings.autoStart !== false);
-  try { clientState = protocol.cleanClientState(JSON.parse(await fs.readFile(clientPath(), 'utf8'))); } catch (error) { if (error.code !== 'ENOENT') throw new Error('Impossible de lire les rooms enregistrées : ' + error.message); clientState = null; }
+  try {
+    clientState = protocol.cleanClientState(JSON.parse(await fs.readFile(clientPath(), 'utf8')));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('Fichier saved-rooms.json corrompu ou illisible, réinitialisation à zéro :', error?.message);
+      await fs.rm(clientPath(), { force: true }).catch(() => {});
+    }
+    clientState = null;
+  }
   const { createRoomServer } = await import(pathToFileURL(path.join(__dirname, '../server/index.mjs')).href);
   const dataDir = path.join(app.getPath('userData'), 'server');
   localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: Number(process.env.MEMEROOM_PORT || 3210), dataDir });
   let address;
-  try { address = await localServer.start(); } catch (error) {
-    if (error.code !== 'EADDRINUSE') throw error;
-    await localServer.stop();
-    localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: 0, dataDir }); address = await localServer.start();
+  try {
+    address = await localServer.start();
+  } catch (error) {
+    if (error.code === 'EADDRINUSE') {
+      await localServer.stop();
+      localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: 0, dataDir });
+      address = await localServer.start();
+    } else {
+      const serverRoomsPath = path.join(dataDir, 'rooms.json');
+      let corrupt = false;
+      try {
+        JSON.parse(await fs.readFile(serverRoomsPath, 'utf8'));
+      } catch (err) {
+        if (err.code !== 'ENOENT') corrupt = true;
+      }
+      if (corrupt) {
+        console.warn('Fichier server/rooms.json corrompu, réinitialisation à zéro :', error.message);
+        await fs.rm(serverRoomsPath, { force: true }).catch(() => {});
+        localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: Number(process.env.MEMEROOM_PORT || 3210), dataDir });
+        address = await localServer.start();
+      } else {
+        throw error;
+      }
+    }
   }
   baseUrl = `http://127.0.0.1:${address.port}`;
-  const controlSession = session.fromPartition('memeroom-control');
+  const controlSession = session.fromPartition('evil-memeroom-control');
   installControlPage(controlSession);
   for (const currentSession of [session.defaultSession, controlSession]) {
     currentSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));

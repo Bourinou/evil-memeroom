@@ -2,7 +2,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { readFile } = require('node:fs/promises');
 
-const MEMEROOM_DIR = path.join(os.homedir(), 'memeroom');
+const MEMEROOM_DIR = path.join(os.homedir(), 'evil-memeroom');
 const MIMES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.webp': 'image/webp',
@@ -54,7 +54,7 @@ function installControlPage(controlSession) {
       const data = await readFile(path.join(__dirname, '..', file[0]));
       return new Response(request.method === 'HEAD' ? null : data, { headers });
     } catch {
-      return new Response('Fichiers de l’application manquants. Réinstallez MemeRoom.', { status: 500, headers: { ...headers, 'Content-Type': 'text/plain; charset=utf-8' } });
+      return new Response('Fichiers de l’application manquants. Réinstallez evil memeroom.', { status: 500, headers: { ...headers, 'Content-Type': 'text/plain; charset=utf-8' } });
     }
   });
 }

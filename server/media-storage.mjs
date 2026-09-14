@@ -11,7 +11,7 @@ import { detectMedia } from './media.mjs';
 export const mediaError = (message, status = 400) => Object.assign(new Error(message), { status });
 export class MediaStorage {
   constructor() { this.pending = new Set(); }
-  async start() { this.directory = await mkdtemp(path.join(os.tmpdir(), 'memeroom-media-')); }
+  async start() { this.directory = await mkdtemp(path.join(os.tmpdir(), 'evil-memeroom-media-')); }
   async receive(request) {
     const file = path.join(this.directory, randomUUID());
     let bytes = 0, header = Buffer.alloc(0);
