@@ -306,7 +306,7 @@ function positionOverlay(contentSize) {
   const display = screen.getAllDisplays().find(d => String(d.id) === settings.display) || screen.getPrimaryDisplay();
   const area = settings.position === 'center' ? display.bounds : display.workArea;
   const maxWidth = Math.round(area.width * settings.size / 100);
-  const maxHeight = Math.min(Math.round(maxWidth * 0.78), area.height - 48);
+  const maxHeight = area.height - 48;
   let width = maxWidth, height = maxHeight;
   if (currentOverlayContentSize && Number.isFinite(currentOverlayContentSize.width) && Number.isFinite(currentOverlayContentSize.height) && currentOverlayContentSize.width > 0 && currentOverlayContentSize.height > 0) {
     width = Math.min(maxWidth, Math.max(80, Math.ceil(currentOverlayContentSize.width) + 16));
@@ -566,7 +566,13 @@ if (singleInstance) app.whenReady().then(async () => {
   });
   ipcMain.on('overlay:error', (event, message, id) => { if (trustedOverlay(event) && id === generation) { clearOverlay(); control.webContents.send('overlay:error', protocol.cleanText(message, 160)); } });
   ipcMain.handle('app:minimize', event => { if (trustedControl(event)) { if (process.platform === 'linux') control.minimize(); else control.hide(); } });
-  tray = new Tray(icon); tray.on('click', () => { control.show(); control.focus(); }); tray.on('double-click', () => { control.show(); control.focus(); }); updateTray();
+  let trayIcon = icon;
+  if (process.platform === 'darwin') {
+    trayIcon = nativeImage.createEmpty();
+    trayIcon.addRepresentation({ scaleFactor: 1.0, buffer: icon.resize({ width: 16, height: 16, quality: 'best' }).toPNG() });
+    trayIcon.addRepresentation({ scaleFactor: 2.0, buffer: icon.resize({ width: 32, height: 32, quality: 'best' }).toPNG() });
+  }
+  tray = new Tray(trayIcon); tray.on('click', () => { control.show(); control.focus(); }); tray.on('double-click', () => { control.show(); control.focus(); }); updateTray();
   control.on('close', event => { if (!quitting) { event.preventDefault(); if (process.platform === 'linux') control.minimize(); else control.hide(); } });
   control.on('blur', finishShortcutCapture);
   control.webContents.on('render-process-gone', () => { finishShortcutCapture(); clearOverlay(); control.reload(); });

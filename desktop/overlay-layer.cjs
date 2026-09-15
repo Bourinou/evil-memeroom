@@ -28,9 +28,9 @@ try:
             xfixes.XFixesDestroyRegion(disp, ctypes.c_ulong(empty))
             x11.XFlush(disp)
             break
-except Exception:
+except BaseException:
     pass`;
-      execFile('python3', ['-c', script], { timeout: 1000 }, () => {});
+      execFile('python3', ['-c', script], { timeout: 1000, stdio: 'ignore' }, () => {});
     }
   }
   function refresh() {
