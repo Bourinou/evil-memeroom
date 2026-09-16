@@ -88,9 +88,22 @@ function renderRooms() {
   renderSend();
 }
 function renderSend() {
-  const automatic = hasTimedMedia({ media: visual, audio });
-  $('#duration').hidden = automatic; $('#duration').disabled = automatic;
-  $('#duration-label').hidden = automatic; $('#duration-unit').hidden = automatic; $('#automatic-duration').hidden = !automatic;
+  const timed = hasTimedMedia({ media: visual, audio });
+  const isTrimmed = !!(visual?.isTrimmed || audio?.isTrimmed);
+  if (isTrimmed && $('#custom-duration-toggle')) {
+    $('#custom-duration-toggle').checked = false;
+  }
+  const custom = timed && !isTrimmed && !!$('#custom-duration-toggle')?.checked;
+  $('#custom-duration-wrap').hidden = !timed || isTrimmed;
+  if (timed) {
+    $('#automatic-duration').textContent = visual?.kind === 'video' ? 'Vidéo complète' : 'Audio complet';
+  }
+  const showDurationInput = !timed || custom;
+  $('#duration').hidden = !showDurationInput;
+  $('#duration').disabled = !showDurationInput;
+  $('#duration-label').hidden = !showDurationInput;
+  $('#duration-unit').hidden = !showDurationInput;
+  $('#automatic-duration').hidden = !timed || custom;
   const hasContent = !!($('#caption').value.trim() || visual || audio);
   const busy = sending || importing || Date.now() < nextSend;
   $('#broadcast').disabled = !connected || !hasContent || busy;
@@ -104,7 +117,21 @@ function renderSend() {
   $('#send-status').textContent = !connected ? 'Sélectionnez une room pour envoyer.' : importing ? 'Import et vérification du fichier…' : Date.now() < nextSend ? 'Patientez quelques secondes avant le prochain envoi.' : '';
 }
 function currentReaction() {
-  return { caption: $('#caption').value, sender: client.nickname, mediaId: visual?.id || null, audioId: audio?.id || null, media: visual, audio, duration: Number($('#duration').value), subtitles: cues, server: resolveServer(target?.server || 'local') };
+  const timed = hasTimedMedia({ media: visual, audio });
+  const isTrimmed = !!(visual?.isTrimmed || audio?.isTrimmed);
+  const custom = timed && !isTrimmed && !!$('#custom-duration-toggle')?.checked;
+  return {
+    caption: $('#caption').value,
+    sender: client.nickname,
+    mediaId: visual?.id || null,
+    audioId: audio?.id || null,
+    media: visual,
+    audio,
+    duration: Number($('#duration').value),
+    subtitles: cues,
+    server: resolveServer(target?.server || 'local'),
+    ...(custom ? { customDuration: true } : {})
+  };
 }
 function renderAttachments() {
   const list = $('#attachments');
@@ -120,9 +147,34 @@ function renderAttachments() {
     }
     const info = node('div', undefined, 'attachment-info');
     info.append(node('strong', asset.name), node('small', `${asset.kind === 'video' ? 'Vidéo' : asset.kind === 'audio' ? 'Audio' : 'Image'} · ${(asset.bytes / 1024 / 1024).toFixed(1)} Mo`));
+    const actions = node('div', undefined, 'row');
+    actions.style.gap = '8px';
+    if (asset.kind === 'video' || asset.kind === 'audio') {
+      const customActive = $('#custom-duration-toggle')?.checked;
+      const trimBtn = node('button', asset.isTrimmed ? 'Découpé' : 'Découper', 'attachment-trim-btn text-button');
+      trimBtn.type = 'button';
+      trimBtn.setAttribute('aria-label', `Découper ${asset.name}`);
+      if (customActive) {
+        trimBtn.disabled = true;
+        trimBtn.title = 'Désactivez « Choisir la durée » pour découper le média.';
+        trimBtn.style.opacity = '0.4';
+        trimBtn.style.cursor = 'not-allowed';
+      } else {
+        trimBtn.addEventListener('click', () => openTrimDialog(asset));
+      }
+      actions.append(trimBtn);
+    }
     const remove = node('button', 'Retirer', 'text-button'); remove.type = 'button'; remove.setAttribute('aria-label', `Retirer ${asset.name}`);
-    remove.addEventListener('click', () => { if (asset === visual) visual = null; else audio = null; renderAttachments(); });
-    row.append(info, remove); list.append(row);
+    remove.addEventListener('click', () => {
+      if (asset === visual) visual = null; else audio = null;
+      if (!hasTimedMedia({ media: visual, audio })) {
+        const toggle = $('#custom-duration-toggle');
+        if (toggle) toggle.checked = false;
+      }
+      renderAttachments();
+    });
+    actions.append(remove);
+    row.append(info, actions); list.append(row);
   }
   renderSend();
 }
@@ -147,7 +199,17 @@ function renderSettings() {
 function handleEvent(event) {
   if (!connected || !room) return;
   if (event.type === 'members') { room.members = event.members; renderRooms(); }
-  if (event.type === 'library') { library = event.media; visual = library.find(item => item.id === visual?.id) || null; audio = library.find(item => item.id === audio?.id) || null; renderLibrary(); renderAttachments(); }
+  if (event.type === 'library') {
+    library = event.media;
+    const isVisualTrimmed = visual?.isTrimmed;
+    const isAudioTrimmed = audio?.isTrimmed;
+    visual = library.find(item => item.id === visual?.id) || visual;
+    audio = library.find(item => item.id === audio?.id) || audio;
+    if (visual && isVisualTrimmed) visual.isTrimmed = true;
+    if (audio && isAudioTrimmed) audio.isTrimmed = true;
+    renderLibrary();
+    renderAttachments();
+  }
   if (event.type === 'room-access') { room.access = event.access; renderRooms(); }
   if (event.type === 'access-changed') { if (target) delete target.joinToken; notify('Les accès de la room ont changé. Rejoignez-la à nouveau.'); }
   if (event.type === 'reaction') {
@@ -162,6 +224,7 @@ function handleEvent(event) {
       media,
       audio,
       duration: event.duration || 5,
+      customDuration: event.customDuration === true,
       sentAt: event.sentAt || Date.now(),
       server: resolveServer(target.server),
       kind: event.media?.kind || (event.audio ? 'audio' : 'text')
@@ -183,6 +246,7 @@ function handleEvent(event) {
 function disconnect() {
   epoch++; clearTimeout(retryTimer); connection?.close(); connection = null; room = null; target = null;
   connected = false; connecting = false; library = []; visual = null; audio = null; cues = []; retries = 0;
+  if ($('#custom-duration-toggle')) $('#custom-duration-toggle').checked = false;
   updateHistoryBadge(); if (currentTab === 'history') renderHistory();
   native?.clear(); status = 'Aucune room sélectionnée.'; renderRooms(); renderAttachments(); renderLibrary(); renderSubtitles();
   $('#password-dialog').close(); $('#access-dialog').close();
@@ -214,7 +278,12 @@ async function attemptJoin(currentEpoch, create) {
     target = { code: data.code, name: data.name, server: target.server, joinToken: data.joinToken, ownerToken: data.ownerToken || target.ownerToken };
     room = data; connected = true; connecting = false; retries = 0; clearTimeout(retryTimer);
     library = data.media;
-    visual = library.find(item => item.id === visual?.id) || null; audio = library.find(item => item.id === audio?.id) || null;
+    const isVisualTrimmed = visual?.isTrimmed;
+    const isAudioTrimmed = audio?.isTrimmed;
+    visual = library.find(item => item.id === visual?.id) || visual;
+    audio = library.find(item => item.id === audio?.id) || audio;
+    if (visual && isVisualTrimmed) visual.isTrimmed = true;
+    if (audio && isAudioTrimmed) audio.isTrimmed = true;
     const stored = loadHistoryFromStorage();
     for (const item of stored) {
       if (!messageHistory.some(existing => existing.id === item.id)) {
@@ -396,6 +465,10 @@ $('#access-form').addEventListener('submit', async event => {
   finally { $('#access-submit').disabled = false; }
 });
 $('#caption').addEventListener('input', renderSend);
+$('#custom-duration-toggle')?.addEventListener('change', () => {
+  renderSend();
+  renderAttachments();
+});
 function createSilentWavBlob(seconds) {
   const sampleRate = 8000;
   const numChannels = 1;
@@ -421,6 +494,45 @@ function createSilentWavBlob(seconds) {
   view.setUint16(34, bitsPerSample, true);
   writeString(36, 'data');
   view.setUint32(40, dataSize, true);
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function encodeAudioBufferToWav(audioBuffer) {
+  const numChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const bitsPerSample = 16;
+  const bytesPerSample = bitsPerSample / 8;
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const samples = audioBuffer.length;
+  const dataSize = samples * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  function writeString(offset, string) {
+    for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+  }
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (let i = 0; i < samples; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const s = Math.max(-1, Math.min(1, audioBuffer.getChannelData(ch)[i]));
+      const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      view.setInt16(offset, val, true);
+      offset += 2;
+    }
+  }
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
@@ -657,6 +769,9 @@ async function insertHistoryItem(item) {
   showTab('composer');
   $('#caption').value = item.caption || '';
   if (item.duration) $('#duration').value = String(item.duration);
+  if (hasTimedMedia(item) && item.customDuration) {
+    if ($('#custom-duration-toggle')) $('#custom-duration-toggle').checked = true;
+  }
   cues = item.subtitles || item.cues || [];
   renderSubtitles();
 
@@ -1045,6 +1160,287 @@ $('#open-saved-folder')?.addEventListener('click', async () => {
     try { await native.openSavedMemesFolder(); } catch (err) { notify(err.message, true); }
   }
 });
+let trimAsset = null, trimTarget = null;
+let trimTotalDuration = 0;
+let trimStart = 0;
+let trimEnd = 0;
+
+function updateTrimUI() {
+  $('#trim-start-display').textContent = `Début : ${trimStart.toFixed(1)}s`;
+  $('#trim-duration-display').textContent = `Durée : ${(trimEnd - trimStart).toFixed(1)}s`;
+  $('#trim-end-display').textContent = `Fin : ${trimEnd.toFixed(1)}s`;
+  const startPct = trimTotalDuration > 0 ? (trimStart / trimTotalDuration) * 100 : 0;
+  const endPct = trimTotalDuration > 0 ? (trimEnd / trimTotalDuration) * 100 : 100;
+  $('#trim-selection').style.left = `${startPct}%`;
+  $('#trim-selection').style.width = `${Math.max(0, endPct - startPct)}%`;
+  $('#trim-handle-start').style.left = `${startPct}%`;
+  $('#trim-handle-end').style.left = `calc(${endPct}% - 16px)`;
+}
+
+function updateTrimPlayhead(time) {
+  const pct = trimTotalDuration > 0 ? (time / trimTotalDuration) * 100 : 0;
+  const playhead = $('#trim-playhead');
+  playhead.style.left = `${pct}%`;
+  playhead.style.display = 'block';
+}
+
+function setupHandleDrag(handle, onMove) {
+  handle.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const track = $('#trim-track');
+    handle.setPointerCapture(e.pointerId);
+    const pointerMove = moveEvent => {
+      const trackRect = track.getBoundingClientRect();
+      const x = Math.max(0, Math.min(trackRect.width, moveEvent.clientX - trackRect.left));
+      const ratio = trackRect.width > 0 ? x / trackRect.width : 0;
+      const time = ratio * trimTotalDuration;
+      onMove(time);
+      updateTrimUI();
+    };
+    const pointerUp = () => {
+      handle.removeEventListener('pointermove', pointerMove);
+      handle.removeEventListener('pointerup', pointerUp);
+      handle.removeEventListener('pointercancel', pointerUp);
+    };
+    handle.addEventListener('pointermove', pointerMove);
+    handle.addEventListener('pointerup', pointerUp);
+    handle.addEventListener('pointercancel', pointerUp);
+  });
+}
+
+setupHandleDrag($('#trim-handle-start'), time => {
+  trimStart = Math.max(0, Math.min(trimEnd - 0.1, time));
+  const media = trimAsset?.kind === 'video' ? $('#trim-video') : $('#trim-audio');
+  media.currentTime = trimStart;
+  updateTrimPlayhead(trimStart);
+});
+
+setupHandleDrag($('#trim-handle-end'), time => {
+  trimEnd = Math.min(trimTotalDuration, Math.max(trimStart + 0.1, time));
+  const media = trimAsset?.kind === 'video' ? $('#trim-video') : $('#trim-audio');
+  media.currentTime = trimEnd;
+  updateTrimPlayhead(trimEnd);
+});
+
+$('#trim-track').addEventListener('pointerdown', e => {
+  if (e.target === $('#trim-handle-start') || e.target === $('#trim-handle-end')) return;
+  const trackRect = $('#trim-track').getBoundingClientRect();
+  const x = Math.max(0, Math.min(trackRect.width, e.clientX - trackRect.left));
+  const ratio = trackRect.width > 0 ? x / trackRect.width : 0;
+  const time = ratio * trimTotalDuration;
+  const media = trimAsset?.kind === 'video' ? $('#trim-video') : $('#trim-audio');
+  media.currentTime = time;
+  updateTrimPlayhead(time);
+});
+
+function onTrimTimeUpdate(media) {
+  if (media.currentTime >= trimEnd) {
+    media.pause();
+    media.currentTime = trimStart;
+    $('#trim-play-pause').textContent = '▶ Lecture';
+  }
+  updateTrimPlayhead(media.currentTime);
+}
+
+$('#trim-video').addEventListener('timeupdate', () => onTrimTimeUpdate($('#trim-video')));
+$('#trim-audio').addEventListener('timeupdate', () => onTrimTimeUpdate($('#trim-audio')));
+
+$('#trim-play-pause').addEventListener('click', () => {
+  const media = trimAsset?.kind === 'video' ? $('#trim-video') : $('#trim-audio');
+  if (media.paused) {
+    if (media.currentTime < trimStart || media.currentTime >= trimEnd) {
+      media.currentTime = trimStart;
+    }
+    media.play().then(() => {
+      $('#trim-play-pause').textContent = '⏸ Pause';
+    }).catch(() => {});
+  } else {
+    media.pause();
+    $('#trim-play-pause').textContent = '▶ Lecture';
+  }
+});
+
+async function drawTrimVisualizer(asset, mediaUrl, duration) {
+  const canvas = $('#trim-canvas');
+  const ctx = canvas.getContext('2d');
+  const width = canvas.parentElement.clientWidth || 600;
+  canvas.width = width;
+  canvas.height = 50;
+  ctx.clearRect(0, 0, width, 50);
+
+  if (asset.kind === 'video') {
+    ctx.fillStyle = '#1e2330';
+    ctx.fillRect(0, 0, width, 50);
+    try {
+      const offscreen = document.createElement('video');
+      offscreen.muted = true;
+      offscreen.playsInline = true;
+      offscreen.crossOrigin = 'anonymous';
+      offscreen.src = mediaUrl;
+      await new Promise(resolve => {
+        offscreen.onloadeddata = resolve;
+        offscreen.onerror = resolve;
+        setTimeout(resolve, 2500);
+      });
+      const frameCount = Math.max(6, Math.min(12, Math.floor(width / 60)));
+      const frameWidth = width / frameCount;
+      for (let i = 0; i < frameCount; i++) {
+        if (trimAsset !== asset) return;
+        const targetTime = (i / (frameCount - 1 || 1)) * Math.max(0.1, duration - 0.1);
+        offscreen.currentTime = targetTime;
+        await new Promise(res => {
+          const onSeek = () => { offscreen.removeEventListener('seeked', onSeek); res(); };
+          offscreen.addEventListener('seeked', onSeek);
+          setTimeout(res, 250);
+        });
+        ctx.drawImage(offscreen, i * frameWidth, 0, frameWidth, 50);
+      }
+    } catch {}
+  } else if (asset.kind === 'audio') {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      try {
+        const resp = await fetch(mediaUrl);
+        const buf = await resp.arrayBuffer();
+        const audioBuf = await audioCtx.decodeAudioData(buf);
+        if (trimAsset !== asset) return;
+        const rawData = audioBuf.getChannelData(0);
+        const step = Math.ceil(rawData.length / width);
+        const amp = 25;
+        ctx.fillStyle = '#ef4444';
+        for (let i = 0; i < width; i++) {
+          let min = 1.0;
+          let max = -1.0;
+          for (let j = 0; j < step; j++) {
+            const datum = rawData[i * step + j];
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
+          }
+          const y = (1 + min) * amp;
+          const h = Math.max(2, (max - min) * amp);
+          ctx.fillRect(i, y, 1, h);
+        }
+      } finally {
+        audioCtx.close().catch(() => {});
+      }
+    } catch {}
+  }
+}
+
+function openTrimDialog(asset) {
+  trimAsset = asset;
+  trimTarget = (asset === visual || asset?.id === visual?.id || asset.kind === 'video') ? 'visual' : 'audio';
+  trimStart = 0;
+  trimEnd = 0;
+  trimTotalDuration = 0;
+  $('#trim-title').textContent = `Découper · ${asset.name}`;
+  $('#trim-apply').disabled = true;
+  $('#trim-apply').textContent = 'Appliquer le trim';
+  $('#trim-play-pause').textContent = '▶ Lecture';
+  $('#trim-playhead').style.display = 'none';
+
+  const mediaUrl = new URL(asset.url, resolveServer(target.server)).href;
+  const video = $('#trim-video');
+  const audioEl = $('#trim-audio');
+  video.pause(); video.removeAttribute('src'); video.load();
+  audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load();
+
+  const media = asset.kind === 'video' ? video : audioEl;
+  video.style.display = asset.kind === 'video' ? 'block' : 'none';
+  audioEl.style.display = 'none';
+
+  const onLoaded = () => {
+    media.removeEventListener('loadedmetadata', onLoaded);
+    trimTotalDuration = media.duration || 5;
+    trimStart = 0;
+    trimEnd = trimTotalDuration;
+    $('#trim-apply').disabled = false;
+    updateTrimUI();
+    drawTrimVisualizer(asset, mediaUrl, trimTotalDuration);
+  };
+  media.addEventListener('loadedmetadata', onLoaded);
+  media.src = mediaUrl;
+  media.load();
+  $('#trim-dialog').showModal();
+}
+
+$('#trim-dialog').addEventListener('close', () => {
+  const v = $('#trim-video');
+  const a = $('#trim-audio');
+  v.pause(); v.removeAttribute('src'); v.load();
+  a.pause(); a.removeAttribute('src'); a.load();
+  trimAsset = null;
+  trimTarget = null;
+});
+
+$('#trim-apply').addEventListener('click', async () => {
+  if (!trimAsset || trimEnd <= trimStart) return;
+  const applyBtn = $('#trim-apply');
+  applyBtn.disabled = true;
+  applyBtn.textContent = 'Découpe en cours…';
+  try {
+    const mediaUrl = new URL(trimAsset.url, resolveServer(target.server)).href;
+    let trimmedFile;
+    if (native?.trimMedia) {
+      const resp = await fetch(mediaUrl);
+      const arrayBuf = await resp.arrayBuffer();
+      const trimmed = await native.trimMedia({
+        name: trimAsset.name,
+        buffer: new Uint8Array(arrayBuf),
+        start: trimStart,
+        end: trimEnd
+      });
+      const mime = trimAsset.mime || (trimAsset.kind === 'video' ? (trimmed.name.endsWith('.webm') ? 'video/webm' : 'video/mp4') : (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mp3'));
+      const blob = new Blob([trimmed.buffer], { type: mime });
+      trimmedFile = new File([blob], trimmed.name, { type: mime });
+    } else if (trimAsset.kind === 'audio') {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      try {
+        const resp = await fetch(mediaUrl);
+        const arrayBuf = await resp.arrayBuffer();
+        const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+        const sampleRate = audioBuf.sampleRate;
+        const startOffset = Math.floor(trimStart * sampleRate);
+        const endOffset = Math.floor(trimEnd * sampleRate);
+        const frameCount = Math.max(1, endOffset - startOffset);
+        const slicedBuf = audioCtx.createBuffer(audioBuf.numberOfChannels, frameCount, sampleRate);
+        for (let ch = 0; ch < audioBuf.numberOfChannels; ch++) {
+          const channelData = audioBuf.getChannelData(ch).subarray(startOffset, endOffset);
+          slicedBuf.copyToChannel(channelData, ch, 0);
+        }
+        const wavBlob = encodeAudioBufferToWav(slicedBuf);
+        trimmedFile = new File([wavBlob], `trim_${trimAsset.name.replace(/\.[^.]+$/, '')}.wav`, { type: 'audio/wav' });
+      } finally {
+        audioCtx.close().catch(() => {});
+      }
+    } else {
+      throw new Error('La découpe de vidéo nécessite l’application bureau.');
+    }
+
+    if (trimmedFile.size > LIMITS.uploadBytes) throw new Error(`${trimmedFile.name} dépasse 1 Go.`);
+    const uploaded = await uploadMedia(trimmedFile, epoch, room);
+    uploaded.isTrimmed = true;
+    if (!library.some(a => a.id === uploaded.id)) library.push(uploaded);
+    if (trimTarget === 'visual') visual = uploaded;
+    else audio = uploaded;
+    const durationToggle = $('#custom-duration-toggle');
+    if (durationToggle) durationToggle.checked = false;
+    const durationInput = $('#duration');
+    if (durationInput) durationInput.value = '';
+    renderSend();
+    renderLibrary();
+    renderAttachments();
+    $('#trim-dialog').close();
+    notify('Média découpé avec succès.');
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    applyBtn.disabled = false;
+    applyBtn.textContent = 'Appliquer le trim';
+  }
+});
+
 async function init() {
   messageHistory = loadHistoryFromStorage();
   if (native) {

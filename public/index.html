@@ -18,7 +18,7 @@
       <div id="attachments" class="attachments"></div>
       <p id="audio-replacement" class="muted" hidden>Le son de la vidéo sera remplacé par cet audio.</p>
       <div class="row subtitle-row"><button id="subtitle-button" type="button">Sous-titres .srt</button><span id="subtitle-label" class="muted"></span><button id="clear-subtitles" class="text-button" type="button" hidden>Retirer</button></div>
-      <div class="send-row"><label id="duration-label" for="duration">Durée</label><input id="duration" type="number" min="0.1" max="600" step="0.1" value="5"><span id="duration-unit" class="muted">s</span><span id="automatic-duration" class="muted" hidden>Durée automatique</span><div class="spacer"></div><button id="preview-play" type="button" disabled>Aperçu</button><button id="broadcast" type="submit" class="primary" disabled>Envoyer</button></div>
+      <div class="send-row"><label id="custom-duration-wrap" class="check" style="margin:0;font-size:12px;gap:5px;" hidden><input id="custom-duration-toggle" type="checkbox"> Choisir la durée</label><label id="duration-label" for="duration">Durée</label><input id="duration" type="number" min="0.1" max="600" step="0.1" value="5"><span id="duration-unit" class="muted">s</span><span id="automatic-duration" class="muted" hidden>Vidéo complète</span><div class="spacer"></div><button id="preview-play" type="button" disabled>Aperçu</button><button id="broadcast" type="submit" class="primary" disabled>Envoyer</button></div>
       <p id="send-status" class="muted" role="status">Sélectionnez une room pour envoyer.</p>
     </form>
     <section id="presets-panel" class="composer" hidden aria-label="Mèmes enregistrés"><div class="composer-heading"><h2>Mèmes enregistrés</h2><button id="open-saved-folder" type="button">Ouvrir le dossier</button></div><div class="search-wrap"><label for="saved-search" class="search-label">Rechercher</label><input id="saved-search" type="search" placeholder="Nom du fichier…"></div><div id="saved-memes-grid" class="saved-memes-grid"></div></section>
@@ -74,6 +74,37 @@
   </form></dialog>
   <dialog id="rename-dialog"><form id="rename-form"><div class="dialog-heading"><h2>Renommer le mème</h2><button type="button" data-close="rename-dialog">Fermer</button></div><label for="rename-input">Nom du fichier</label><input id="rename-input" type="text" maxlength="160" required autocomplete="off"><p id="rename-error" class="error" role="alert"></p><div class="row" style="margin-top:16px;justify-content:flex-end;gap:10px;"><button type="button" data-close="rename-dialog">Annuler</button><button id="rename-submit" class="primary" type="submit">Enregistrer</button></div></form></dialog>
   <dialog id="preview-dialog"><div class="dialog-heading"><h2>Aperçu</h2><button data-close="preview-dialog">Fermer</button></div><p id="preview-loading" class="muted" role="status">Téléchargement du contenu…</p><div id="large-preview"></div></dialog>
+  <dialog id="trim-dialog" style="width:min(680px, calc(100% - 20px));">
+    <div class="dialog-heading">
+      <h2 id="trim-title">Découper (Trim)</h2>
+      <button type="button" data-close="trim-dialog">Fermer</button>
+    </div>
+    <div id="trim-preview-container">
+      <video id="trim-video" playsinline style="max-width:100%;max-height:280px;display:none;border-radius:4px;"></video>
+      <audio id="trim-audio" style="display:none;"></audio>
+    </div>
+    <div class="trim-timeline-wrap">
+      <div class="trim-time-row">
+        <span id="trim-start-display">Début : 0.0s</span>
+        <span id="trim-duration-display">Durée : 0.0s</span>
+        <span id="trim-end-display">Fin : 0.0s</span>
+      </div>
+      <div id="trim-track">
+        <canvas id="trim-canvas" width="600" height="50"></canvas>
+        <div id="trim-selection"></div>
+        <div id="trim-playhead"></div>
+        <div id="trim-handle-start" title="Borne début">◀</div>
+        <div id="trim-handle-end" title="Borne fin">▶</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px;justify-content:space-between;align-items:center;">
+      <button id="trim-play-pause" type="button">▶ Lecture</button>
+      <div class="row" style="gap:10px;">
+        <button type="button" data-close="trim-dialog">Annuler</button>
+        <button id="trim-apply" type="button" class="primary">Appliquer le trim</button>
+      </div>
+    </div>
+  </dialog>
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <script type="module" src="/app.mjs"></script>
 </body></html>

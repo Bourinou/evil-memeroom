@@ -69,7 +69,7 @@ export function mountReaction(container, reaction, { volume = 0, autoplay = fals
     await Promise.all(players.map(player => player.play()));
     if (dead || completed) return;
     root.hidden = false; onReady();
-    const automatic = hasTimedMedia(reaction) && players.length > 0;
+    const automatic = hasTimedMedia(reaction) && reaction.durationMode !== 'fixed' && !reaction.customDuration && players.length > 0;
     if (automatic) {
       const progress = new Map(players.map(player => [player, { time:player.currentTime, at:performance.now() }]));
       const checkEnded = () => { if (players.every(player => player.ended)) finish(); };
@@ -85,7 +85,12 @@ export function mountReaction(container, reaction, { volume = 0, autoplay = fals
         if (advanced) onProgress(); checkEnded();
       }, 1000);
       checkEnded();
-    } else timer = setTimeout(finish, reaction.duration * 1000);
+    } else {
+      if (hasTimedMedia(reaction) && players.length > 0) {
+        for (const player of players) player.addEventListener('ended', finish);
+      }
+      timer = setTimeout(finish, reaction.duration * 1000);
+    }
     if (reaction.subtitles?.length) {
       let currentText = caption.textContent;
       const tick = () => {

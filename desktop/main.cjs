@@ -595,6 +595,74 @@ if (singleInstance) app.whenReady().then(async () => {
     const buf = await fs.readFile(path.join(MEMEROOM_DIR, safeName));
     return { name: safeName, bytes: buf.byteLength, buffer: buf };
   });
+  ipcMain.handle('media:trim', async (event, { name, buffer, start, end }) => {
+    if (!trustedControl(event)) throw new Error('Accès refusé.');
+    const safeName = path.basename(name || 'media');
+    const ext = path.extname(safeName).toLowerCase() || '.mp4';
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-trim-'));
+    const inputPath = path.join(tempDir, `input${ext}`);
+    const outputPath = path.join(tempDir, `trimmed_${safeName}`);
+    try {
+      await fs.writeFile(inputPath, Buffer.from(buffer));
+      let ffmpegBin;
+      try {
+        ffmpegBin = require('ffmpeg-static');
+        if (typeof ffmpegBin === 'string' && app.isPackaged) {
+          ffmpegBin = ffmpegBin.replace('app.asar', 'app.asar.unpacked');
+        }
+        if (!ffmpegBin || !require('node:fs').existsSync(ffmpegBin)) {
+          ffmpegBin = 'ffmpeg';
+        }
+      } catch {
+        ffmpegBin = 'ffmpeg';
+      }
+
+      const { execFile } = require('node:child_process');
+      const { promisify } = require('node:util');
+      const execFileAsync = promisify(execFile);
+
+      const duration = Math.max(0.1, end - start);
+      try {
+        await execFileAsync(ffmpegBin, [
+          '-y',
+          '-ss', String(start),
+          '-t', String(duration),
+          '-i', inputPath,
+          '-preset', 'veryfast',
+          outputPath
+        ], { windowsHide: true });
+      } catch (presetErr) {
+        try {
+          await execFileAsync(ffmpegBin, [
+            '-y',
+            '-ss', String(start),
+            '-t', String(duration),
+            '-i', inputPath,
+            outputPath
+          ], { windowsHide: true });
+        } catch (reencErr) {
+          await execFileAsync(ffmpegBin, [
+            '-y',
+            '-ss', String(start),
+            '-t', String(duration),
+            '-i', inputPath,
+            '-c', 'copy',
+            '-avoid_negative_ts', 'make_zero',
+            outputPath
+          ], { windowsHide: true });
+        }
+      }
+
+      const trimmedBytes = await fs.readFile(outputPath);
+      return {
+        name: `trim_${safeName}`,
+        buffer: trimmedBytes,
+        size: trimmedBytes.length
+      };
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
   ipcMain.handle('settings:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveSettings(value); });
   ipcMain.handle('shortcut:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveSettings({ ...settings, dismissShortcut: value }, true); });
   ipcMain.handle('shortcut:record', (event, active) => {
