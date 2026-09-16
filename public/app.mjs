@@ -446,6 +446,40 @@ $('#audio-input').addEventListener('change', event => { uploadFiles([...event.ta
 for (const type of ['dragenter','dragover']) $('#drop-zone').addEventListener(type, event => { event.preventDefault(); $('#drop-zone').classList.add('dragging'); });
 $('#drop-zone').addEventListener('dragleave', () => $('#drop-zone').classList.remove('dragging'));
 $('#drop-zone').addEventListener('drop', event => { event.preventDefault(); $('#drop-zone').classList.remove('dragging'); uploadFiles([...event.dataTransfer.files]); });
+window.addEventListener('paste', async event => {
+  const modal = document.querySelector('dialog[open]:not(#preview-dialog)');
+  if (modal) return;
+  const clipboard = event.clipboardData;
+  if (!clipboard) return;
+  const files = [];
+  if (clipboard.files && clipboard.files.length > 0) {
+    for (const f of clipboard.files) {
+      if (f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/') || /\.(png|jpe?g|gif|webp|mp4|webm|mp3|wav|ogg)$/i.test(f.name)) {
+        files.push(f);
+      }
+    }
+  }
+  if (!files.length && clipboard.items) {
+    for (const item of clipboard.items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f && (f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/'))) {
+          const namedFile = f.name ? f : new File([f], f.type.startsWith('image/') ? 'image.png' : (f.type.startsWith('video/') ? 'video.mp4' : 'audio.mp3'), { type: f.type });
+          files.push(namedFile);
+        }
+      }
+    }
+  }
+  if (files.length > 0) {
+    event.preventDefault();
+    if (!connected || !room) {
+      notify('Sélectionnez une room avant d’ajouter un fichier.');
+      return;
+    }
+    showMessages(false);
+    await uploadFiles(files);
+  }
+});
 $('#existing-media')?.addEventListener('change', event => { const asset = library.find(item => item.id === event.target.value); if (asset) attach(asset); event.target.value = ''; });
 function renderSubtitles() { $('#subtitle-label').textContent = cues.length ? `${cues.length} sous-titre(s)` : ''; $('#clear-subtitles').hidden = !cues.length; }
 $('#subtitle-button').addEventListener('click', () => $('#subtitle-input').click());
