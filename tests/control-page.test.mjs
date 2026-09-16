@@ -30,3 +30,20 @@ test('room HTTP requests keep their authorization and binary body when forwarded
   assert.equal(received.request.headers.get('authorization'), 'Bearer test-session');
   assert.deepEqual(new Uint8Array(await received.request.arrayBuffer()), new Uint8Array([0, 1, 255]));
 });
+
+test('saved memes with spaces in filenames decode and serve correctly', async t => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { mkdir, writeFile, rm } = await import('node:fs/promises');
+  let handler;
+  installControlPage({ protocol: { handle(_scheme, callback) { handler = callback; } }, fetch() {} });
+  const memeDir = path.join(os.homedir(), 'evil-memeroom');
+  await mkdir(memeDir, { recursive: true });
+  const testFile = path.join(memeDir, 'test space meme.png');
+  await writeFile(testFile, Buffer.from('test-image-bytes'));
+  t.after(() => rm(testFile, { force: true }));
+
+  const response = await handler(new Request(new URL('/saved-memes/' + encodeURIComponent('test space meme.png'), CONTROL_URL)));
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), 'test-image-bytes');
+});

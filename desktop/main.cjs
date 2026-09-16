@@ -133,6 +133,15 @@ async function syncHashCache() {
   if (modified) persistHashCache();
 }
 
+function sanitizeMemeFilename(name) {
+  const base = String(name || '').split(/[/\\]/).pop() || '';
+  return base
+    .replace(/[<>:"/\\|?*\x00-\x1f]/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\s+\./g, '.');
+}
+
 async function saveMemeAsset(sourceFile, originalName, kind) {
   await syncHashCache();
   const sourceStat = await fs.stat(sourceFile);
@@ -153,13 +162,13 @@ async function saveMemeAsset(sourceFile, originalName, kind) {
     }
   }
 
-  const cleanBase = path.basename(originalName).replace(/[^\w.-]/g, '_') || `meme_${Date.now()}`;
+  const cleanBase = sanitizeMemeFilename(originalName) || `meme_${Date.now()}`;
   const parsed = path.parse(cleanBase);
   let finalName = cleanBase;
   let counter = 1;
   const entries = await fs.readdir(MEMEROOM_DIR);
   while (entries.some(e => e.toLowerCase() === finalName.toLowerCase())) {
-    finalName = `${parsed.name}_${counter}${parsed.ext}`;
+    finalName = `${parsed.name} ${counter}${parsed.ext}`;
     counter++;
   }
 
@@ -512,7 +521,7 @@ if (singleInstance) app.whenReady().then(async () => {
   ipcMain.handle('savedMemes:rename', async (event, oldName, newName) => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
     const safeOld = path.basename(oldName);
-    let safeNew = path.basename(newName).replace(/[^\w.-]/g, '_');
+    let safeNew = sanitizeMemeFilename(newName);
     if (!safeNew) throw new Error('Nom invalide.');
     const oldExt = path.extname(safeOld).toLowerCase();
     if (!path.extname(safeNew)) safeNew += oldExt;
