@@ -74,3 +74,12 @@ export function cleanClientState(input = {}) {
   const active = rooms.find(r => r.code === input.active?.code && r.server === input.active?.server);
   return { nickname: cleanText(input.nickname, 24), rooms, active: active ? { code: active.code, server: active.server } : null, autoJoin: input.autoJoin !== false };
 }
+
+export function normalizeSearch(value) {
+  return String(value || '')
+    .toLocaleLowerCase('fr')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-_\s]+/g, ' ')
+    .trim();
+}

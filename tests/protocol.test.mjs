@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia } from '../shared/protocol.mjs';
+import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch } from '../shared/protocol.mjs';
 import { detectMedia } from '../server/media.mjs';
 test('preferences always respect receiver limits',()=>{
   const p=cleanSettings({size:99,volume:-12,cooldown:0,paused:'true',position:'evil',display:42});
@@ -80,5 +80,20 @@ test('silent WAV header is valid and recognized as audio/wav',()=>{
   buffer.write('data', 36);
   buffer.writeUInt32LE(dataSize, 40);
   assert.deepEqual(detectMedia(buffer), { mime: 'audio/wav', kind: 'audio' });
+});
+
+test('normalizeSearch treats spaces, hyphens, and underscores equivalently', () => {
+  const query = 'meme drole';
+  const queryNormalized = normalizeSearch(query);
+  assert.equal(queryNormalized, 'meme drole');
+
+  const filenames = ['meme drole.png', 'meme_drole.png', 'meme-drole.png', 'mème drôle.png', 'MÉMÉ-DRÔLE.mp4'];
+  for (const name of filenames) {
+    assert.ok(normalizeSearch(name).includes(queryNormalized), `"${name}" should match query "${query}"`);
+  }
+
+  assert.ok(normalizeSearch('meme drole.png').includes(normalizeSearch('meme_drole')));
+  assert.ok(normalizeSearch('meme drole.png').includes(normalizeSearch('meme-drole')));
+  assert.equal(normalizeSearch('autre_meme.png').includes(queryNormalized), false);
 });
 

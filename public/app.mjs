@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS } from './shared/protocol.mjs';
+import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch } from './shared/protocol.mjs';
 import { Connection } from './connection.mjs';
 import { mountReaction } from './media-view.mjs';
 
@@ -791,8 +791,11 @@ function renderSavedMemes() {
   if (!grid) return;
   for (const player of grid.querySelectorAll('video')) { player.pause(); player.removeAttribute('src'); player.load(); }
   grid.replaceChildren();
-  const query = ($('#saved-search')?.value || '').trim().toLocaleLowerCase('fr');
-  const filtered = savedMemes.filter(item => item.name.toLocaleLowerCase('fr').includes(query));
+  const rawQuery = $('#saved-search')?.value || '';
+  const query = normalizeSearch(rawQuery);
+  const filtered = query
+    ? savedMemes.filter(item => normalizeSearch(item.name).includes(query))
+    : savedMemes;
   if (!filtered.length) {
     const emptyMsg = node('p', savedMemes.length ? 'Aucun mème ne correspond à votre recherche.' : 'Aucun mème enregistré pour le moment. Les mèmes reçus s’enregistrent automatiquement ici.', 'muted');
     emptyMsg.style.gridColumn = '1 / -1';
