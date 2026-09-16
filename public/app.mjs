@@ -915,7 +915,7 @@ async function init() {
     if (native.onSavedMemesUpdated) native.onSavedMemesUpdated(() => { void loadSavedMemes(); });
     await loadSavedMemes();
   } else $('#reception-settings').hidden = true;
-  renderRooms(); renderSettings(); renderLibrary();
+  renderRooms(); renderSettings(); renderLibrary(); showTab(currentTab);
   if (client.autoJoin && client.active) {
     const saved = client.rooms.find(entry => keyFor(entry) === keyFor(client.active));
     if (saved) try { await chooseRoom(saved); } catch { /* Saved room stays available while the server is offline. */ }

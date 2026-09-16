@@ -5,6 +5,40 @@
 html,body { height:100%; overflow:hidden; }
 body { margin:0; background:radial-gradient(circle at 50% 0%, #20080d 0%, #0d0f14 45%, #07080a 100%); background-attachment:fixed; display:flex; flex-direction:column; }
 body>main.app { flex:1; overflow-y:auto; overflow-x:hidden; }
+main.app[data-tab="presets"],
+main.app[data-tab="history"],
+#presets-panel,
+#history-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+main.app[data-tab="presets"]::-webkit-scrollbar,
+main.app[data-tab="history"]::-webkit-scrollbar,
+#presets-panel::-webkit-scrollbar,
+#history-panel::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 0;
+}
+main.app[data-tab="presets"]::-webkit-scrollbar-track,
+main.app[data-tab="history"]::-webkit-scrollbar-track,
+#presets-panel::-webkit-scrollbar-track,
+#history-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+main.app[data-tab="presets"]::-webkit-scrollbar-thumb,
+main.app[data-tab="history"]::-webkit-scrollbar-thumb,
+#presets-panel::-webkit-scrollbar-thumb,
+#history-panel::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+}
+main.app[data-tab="presets"]::-webkit-scrollbar-thumb:hover,
+main.app[data-tab="history"]::-webkit-scrollbar-thumb:hover,
+#presets-panel::-webkit-scrollbar-thumb:hover,
+#history-panel::-webkit-scrollbar-thumb:hover {
+  background: #ef4444;
+}
 button,input,select,textarea { font:inherit; color:inherit; }
 button { cursor:pointer; background:#181c24; border:1px solid #2c3240; border-radius:6px; padding:6px 12px; font-size:13px; white-space:nowrap; color:#e5e7eb; transition:background-color .15s, border-color .15s, transform .15s, box-shadow .15s; }
 button:hover:not(:disabled) { background:#222834; border-color:#3b4356; }
