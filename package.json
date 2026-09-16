@@ -1,7 +1,7 @@
 {
   "name": "evil-memeroom",
   "desktopName": "evil-memeroom",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Des réactions en direct, par-dessus votre écran.",
   "private": true,
   "type": "module",
