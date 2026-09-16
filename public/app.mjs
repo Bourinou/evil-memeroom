@@ -845,6 +845,11 @@ function renderHistory() {
     actions.append(insertBtn, previewBtn, delBtn);
 
     card.append(actions);
+    card.setAttribute('title', 'Cliquer pour un aperçu');
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => {
+      showPreview({ ...item, server: item.server || resolveServer(target?.server || 'local') });
+    });
     container.append(card);
   }
 }
@@ -938,7 +943,7 @@ function renderSavedMemes() {
   }
   for (const meme of filtered) {
     const card = node('div', undefined, 'saved-meme-card');
-    card.setAttribute('title', `${meme.name} (cliquer pour ouvrir)`);
+    card.setAttribute('title', `${meme.name} (cliquer pour un aperçu)`);
     const thumbBox = node('div', undefined, 'saved-meme-thumb-box');
     if (meme.kind === 'image') {
       const img = node('img', undefined, 'saved-meme-thumb');
@@ -1003,7 +1008,14 @@ function renderSavedMemes() {
     actions.append(insertBtn, renameBtn, delBtn);
     card.append(thumbBox, name, actions);
     card.addEventListener('click', () => {
-      if (native?.openSavedMemeFile) native.openSavedMemeFile(meme.name).catch(err => notify(err.message, true));
+      const reaction = {
+        caption: '',
+        media: meme.kind !== 'audio' ? { kind: meme.kind, url: meme.url, name: meme.name } : null,
+        audio: meme.kind === 'audio' ? { kind: 'audio', url: meme.url, name: meme.name } : null,
+        duration: 5,
+        server: location.origin
+      };
+      showPreview(reaction);
     });
     grid.append(card);
   }
