@@ -321,7 +321,8 @@ function positionOverlay(contentSize) {
 async function displayReaction(payload, test = false) {
   if (settings.paused) return { shown: false, reason: 'paused' };
   const now = Date.now();
-  if (!test && (now - lastShown < settings.cooldown * 1000 || seen.has(payload?.id))) return { shown: false, reason: 'cooldown' };
+  const replay = Boolean(payload?.replay);
+  if (!test && !replay && (now - lastShown < settings.cooldown * 1000 || seen.has(payload?.id))) return { shown: false, reason: 'cooldown' };
   if (!payload || typeof payload !== 'object') throw new Error('Réaction invalide.');
   const server = protocol.normalizeServer(payload.server);
   const media = new Map();
@@ -333,7 +334,7 @@ async function displayReaction(payload, test = false) {
   const automatic = protocol.hasTimedMedia(reaction);
   const delay = Number.isFinite(payload.delay) ? Math.max(0, Math.min(payload.delay, 1000)) : 0;
   lastShown = now;
-  if (typeof payload.id === 'string') { seen.add(payload.id.slice(0,80)); if (seen.size > 100) seen.delete(seen.values().next().value); }
+  if (!replay && typeof payload.id === 'string') { seen.add(payload.id.slice(0,80)); if (seen.size > 100) seen.delete(seen.values().next().value); }
   clearOverlay(); const currentGeneration = generation;
   const abort = new AbortController(); playbackAbort = abort;
   if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -346,11 +347,26 @@ async function displayReaction(payload, test = false) {
       playbackDirectory = directory;
       for (const key of ['media','audio']) if (reaction[key]) {
         const file = path.join(directory, key);
-        await downloadAsset(reaction[key], server, file, abort.signal);
+        try {
+          await downloadAsset(reaction[key], server, file, abort.signal);
+        } catch (downloadErr) {
+          if (!replay) throw downloadErr;
+          let recovered = false;
+          const candidates = [reaction[key].name, `${key}_${reaction[key].id}`].filter(Boolean);
+          for (const cand of candidates) {
+            try {
+              const localPath = path.join(MEMEROOM_DIR, path.basename(cand));
+              await fs.copyFile(localPath, file);
+              recovered = true;
+              break;
+            } catch {}
+          }
+          if (!recovered) throw downloadErr;
+        }
         reaction[key].playbackURL = pathToFileURL(file).href;
         const assetName = reaction[key].name || `${key}_${reaction[key].id}`;
         const isSilentAudio = key === 'audio' && (assetName === 'silent_audio.wav' || assetName.startsWith('silent_'));
-        if (!isSilentAudio) {
+        if (!isSilentAudio && !replay) {
           try {
             const saveRes = await saveMemeAsset(file, assetName, reaction[key].kind);
             if (saveRes.saved && control && !control.isDestroyed()) {

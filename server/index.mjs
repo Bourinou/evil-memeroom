@@ -260,8 +260,8 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
           const reaction = validateReaction(body, room.media);
           const event = { ...reaction, id: randomUUID(), sender: { id: member.id, name: member.name }, sentAt: now, startAt: now + 350, type: 'reaction' };
           room.lastBroadcast = now; room.lastActive = now;
-          room.history.unshift({ id: event.id, name: event.name, sender: member.name, sentAt: now, kind: event.media?.kind || (event.audio ? 'audio' : 'text') });
-          room.history.length = Math.min(room.history.length, 30);
+          room.history.unshift({ id: event.id, name: event.name, sender: member.name, sentAt: now, kind: event.media?.kind || (event.audio ? 'audio' : 'text'), caption: event.caption || '', media: event.media || null, audio: event.audio || null, cues: event.cues || [], duration: event.duration });
+          room.history.length = Math.min(room.history.length, 50);
           emit(room, event); reply({ id: event.id }); return;
         }
         throw new Error('Action inconnue.');

@@ -135,4 +135,24 @@ dialog section { border-top:1px solid var(--border); margin-top:18px; padding-to
   .saved-meme-name { font-size:12px; min-height:2.6em; }
   .saved-meme-btn-insert, .saved-meme-btn-rename { padding:4px 6px; font-size:11px; }
   .saved-meme-delete { padding:4px 5px; }
+  .history-card { flex-direction:column; align-items:stretch; }
+  .history-thumb-box { width:100%; height:110px; }
+  .history-actions { flex-direction:row; justify-content:flex-end; }
 }
+
+.history-list { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+.history-card { display:flex; gap:14px; align-items:center; background:#14171f; border:1px solid var(--border); border-radius:8px; padding:12px; transition:all .2s cubic-bezier(0.16, 1, 0.3, 1); position:relative; animation:demon-rise .25s ease-out both; }
+.history-card:hover { border-color:#ef4444; box-shadow:0 4px 16px rgba(220,38,38,0.25); background:#191d27; }
+.history-thumb-box { width:90px; height:70px; display:flex; align-items:center; justify-content:center; background:#07080a; border-radius:6px; overflow:hidden; flex-shrink:0; border:1px solid #1a1e27; position:relative; }
+.history-thumb { width:100%; height:100%; object-fit:contain; display:block; }
+.history-icon { font-size:26px; color:var(--accent); }
+.history-badge { position:absolute; bottom:4px; right:4px; background:rgba(0,0,0,0.85); backdrop-filter:blur(4px); color:#fca5a5; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; text-transform:uppercase; border:1px solid rgba(220,38,38,0.4); }
+.history-body { flex:1; min-width:0; }
+.history-header { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:4px; }
+.history-sender { font-size:13px; font-weight:700; color:#f87171; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.history-time { font-size:11px; color:var(--muted); flex-shrink:0; }
+.history-caption { font-size:13px; color:#f3f4f6; overflow-wrap:anywhere; line-height:1.4; }
+.history-actions { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+.history-btn-replay { font-size:12px; padding:6px 12px; }
+.history-btn-insert { background:#1a1e27; border:1px solid #2e3545; color:#d1d5db; font-size:11px; padding:4px 8px; border-radius:4px; transition:all .15s ease; }
+.history-btn-insert:hover { background:#252b38; border-color:#4b5568; color:#fff; }

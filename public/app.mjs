@@ -151,6 +151,23 @@ function handleEvent(event) {
   if (event.type === 'room-access') { room.access = event.access; renderRooms(); }
   if (event.type === 'access-changed') { if (target) delete target.joinToken; notify('Les accès de la room ont changé. Rejoignez-la à nouveau.'); }
   if (event.type === 'reaction') {
+    const historyItem = {
+      id: event.id,
+      sender: event.sender?.name || 'Inconnu',
+      caption: event.caption || '',
+      media: event.media || null,
+      audio: event.audio || null,
+      duration: event.duration || 5,
+      sentAt: event.sentAt || Date.now(),
+      server: resolveServer(target.server),
+      kind: event.media?.kind || (event.audio ? 'audio' : 'text')
+    };
+    if (!messageHistory.some(item => item.id === historyItem.id)) {
+      messageHistory.unshift(historyItem);
+      if (room?.code) saveHistoryToStorage(room.code, messageHistory);
+      updateHistoryBadge();
+      if (currentTab === 'history') renderHistory();
+    }
     const isSelf = (room?.memberId && event.sender?.id === room.memberId) || (client?.nickname && event.sender?.name === client.nickname);
     if (isSelf && settings.hideSelf) return;
     if (native && !settings.paused) {
@@ -162,6 +179,7 @@ function handleEvent(event) {
 function disconnect() {
   epoch++; clearTimeout(retryTimer); connection?.close(); connection = null; room = null; target = null;
   connected = false; connecting = false; library = []; visual = null; audio = null; cues = []; retries = 0;
+  messageHistory = []; updateHistoryBadge(); if (currentTab === 'history') renderHistory();
   native?.clear(); status = 'Aucune room sélectionnée.'; renderRooms(); renderAttachments(); renderLibrary(); renderSubtitles();
   $('#password-dialog').close(); $('#access-dialog').close();
 }
@@ -193,6 +211,28 @@ async function attemptJoin(currentEpoch, create) {
     room = data; connected = true; connecting = false; retries = 0; clearTimeout(retryTimer);
     library = data.media;
     visual = library.find(item => item.id === visual?.id) || null; audio = library.find(item => item.id === audio?.id) || null;
+    messageHistory = loadHistoryFromStorage(data.code);
+    if (Array.isArray(data.history)) {
+      for (const item of data.history.slice().reverse()) {
+        const itemRecord = {
+          id: item.id,
+          sender: item.sender?.name || (typeof item.sender === 'string' ? item.sender : 'Inconnu'),
+          caption: item.caption || '',
+          media: item.media || null,
+          audio: item.audio || null,
+          duration: item.duration || 5,
+          sentAt: item.sentAt || Date.now(),
+          server: resolveServer(target.server),
+          kind: item.kind || item.media?.kind || (item.audio ? 'audio' : 'text')
+        };
+        if (!messageHistory.some(existing => existing.id === itemRecord.id)) {
+          messageHistory.unshift(itemRecord);
+        }
+      }
+      saveHistoryToStorage(data.code, messageHistory);
+    }
+    updateHistoryBadge();
+    if (currentTab === 'history') renderHistory();
     client.rooms = [target, ...client.rooms.filter(entry => keyFor(entry) !== keyFor(target))];
     client.active = { code: target.code, server: target.server };
     const saved = await saveClient();
@@ -552,11 +592,145 @@ for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideS
   $(`#${id}`)?.addEventListener('input', event => { const input = event.target; updateSettings({ ...settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
 }
 $('#test-overlay').addEventListener('click', async () => { if (native) { const result = await native.test(); if (!result.shown) notify('Reprenez la réception pour tester l’overlay.'); } });
-function showMessages(saved) {
-  $('#send-form').hidden = saved; $('#presets-panel').hidden = !saved;
-  $('#show-composer').setAttribute('aria-pressed', String(!saved)); $('#show-presets').setAttribute('aria-pressed', String(saved));
-  if (saved) void loadSavedMemes();
+let currentTab = 'composer';
+let messageHistory = [];
+
+function historyStorageKey(roomCode) {
+  return `evil-memeroom:history:${roomCode || 'global'}`;
 }
+function loadHistoryFromStorage(roomCode) {
+  try {
+    const raw = localStorage.getItem(historyStorageKey(roomCode));
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+function saveHistoryToStorage(roomCode, list) {
+  try {
+    localStorage.setItem(historyStorageKey(roomCode), JSON.stringify(list.slice(0, 100)));
+  } catch {}
+}
+function updateHistoryBadge() {
+  const countEl = $('#history-count');
+  if (countEl) countEl.textContent = String(messageHistory.length);
+}
+function formatTime(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+async function replayMessage(item) {
+  if (!connected || !room) {
+    notify('Sélectionnez une room avant de rejouer un message.', true);
+    return;
+  }
+  try {
+    if (native) {
+      const payload = {
+        ...item,
+        delay: 0,
+        age: 0,
+        replay: true,
+        server: item.server || resolveServer(target.server)
+      };
+      const result = await native.show(payload);
+      if (result && result.shown === false) {
+        if (result.reason === 'paused') notify('Reprenez la réception pour rejouer le message.', true);
+        else notify('Le message n’a pas pu être rejoué.', true);
+      } else {
+        notify('Message rejoué.');
+      }
+    } else {
+      notify('Relecture disponible dans l’application installée.');
+    }
+  } catch (err) {
+    notify(`Impossible de rejouer : ${err.message}`, true);
+  }
+}
+function renderHistory() {
+  updateHistoryBadge();
+  const container = $('#history-list');
+  if (!container) return;
+  for (const player of container.querySelectorAll('video')) { player.pause(); player.removeAttribute('src'); player.load(); }
+  container.replaceChildren();
+
+  if (!messageHistory.length) {
+    const emptyMsg = node('p', 'Aucun message dans l’historique pour le moment.', 'muted');
+    emptyMsg.style.padding = '30px 10px';
+    emptyMsg.style.textAlign = 'center';
+    container.append(emptyMsg);
+    return;
+  }
+
+  for (const item of messageHistory) {
+    const card = node('div', undefined, 'history-card');
+
+    if (item.media || item.audio) {
+      const thumbBox = node('div', undefined, 'history-thumb-box');
+      const mediaBase = item.server || resolveServer(target?.server);
+      if (item.media?.kind === 'image') {
+        const img = node('img', undefined, 'history-thumb');
+        img.src = item.media.url ? new URL(item.media.url, mediaBase).href : '';
+        img.alt = item.media.name || 'Image';
+        img.loading = 'lazy';
+        thumbBox.append(img);
+      } else if (item.media?.kind === 'video') {
+        const vid = node('video', undefined, 'history-thumb');
+        vid.src = item.media.url ? `${new URL(item.media.url, mediaBase).href}#t=0.001` : '';
+        vid.muted = true;
+        vid.preload = 'metadata';
+        thumbBox.append(vid);
+        thumbBox.append(node('span', 'VID', 'history-badge'));
+      } else if (item.audio) {
+        thumbBox.append(node('span', '🎵', 'history-icon'));
+        thumbBox.append(node('span', 'AUD', 'history-badge'));
+      }
+      card.append(thumbBox);
+    }
+
+    const body = node('div', undefined, 'history-body');
+    const header = node('div', undefined, 'history-header');
+    const sender = node('span', item.sender || 'Inconnu', 'history-sender');
+    const time = node('span', formatTime(item.sentAt), 'history-time');
+    header.append(sender, time);
+    body.append(header);
+
+    if (item.caption) {
+      const caption = node('div', item.caption, 'history-caption');
+      body.append(caption);
+    }
+    card.append(body);
+
+    const actions = node('div', undefined, 'history-actions');
+    const replayBtn = node('button', '▶ Rejouer', 'history-btn-replay primary');
+    replayBtn.type = 'button';
+    replayBtn.setAttribute('title', 'Rejouer ce message');
+    replayBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      replayMessage(item);
+    });
+    actions.append(replayBtn);
+
+    card.append(actions);
+    container.append(card);
+  }
+}
+function showTab(tab) {
+  if (typeof tab === 'boolean') tab = tab ? 'presets' : 'composer';
+  currentTab = tab;
+  const appEl = document.querySelector('main.app');
+  if (appEl) appEl.dataset.tab = tab;
+  $('#send-form').hidden = tab !== 'composer';
+  $('#presets-panel').hidden = tab !== 'presets';
+  $('#history-panel').hidden = tab !== 'history';
+  $('#show-composer').setAttribute('aria-pressed', String(tab === 'composer'));
+  $('#show-presets').setAttribute('aria-pressed', String(tab === 'presets'));
+  $('#show-history').setAttribute('aria-pressed', String(tab === 'history'));
+  if (tab === 'presets') void loadSavedMemes();
+  if (tab === 'history') renderHistory();
+}
+const showMessages = showTab;
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
@@ -699,8 +873,16 @@ function renderSavedMemes() {
     grid.append(card);
   }
 }
-$('#show-composer').addEventListener('click', () => showMessages(false));
-$('#show-presets').addEventListener('click', () => showMessages(true));
+$('#show-composer').addEventListener('click', () => showTab('composer'));
+$('#show-presets').addEventListener('click', () => showTab('presets'));
+$('#show-history').addEventListener('click', () => showTab('history'));
+$('#clear-history')?.addEventListener('click', () => {
+  messageHistory = [];
+  if (room?.code) saveHistoryToStorage(room.code, messageHistory);
+  renderHistory();
+  updateHistoryBadge();
+  notify('Historique effacé.');
+});
 $('#duration')?.addEventListener('change', () => {
   const val = Number($('#duration').value);
   if (!Number.isFinite(val) || val < 1) $('#duration').value = '1';

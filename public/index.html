@@ -9,7 +9,7 @@
       <div class="room-info"><span id="connection-status" role="status">Aucune room sélectionnée.</span><span class="nickname-pill"><span class="nickname-label">Moi :</span> <button id="edit-nickname" type="button" class="text-button nickname-btn" title="Modifier votre pseudo dans la room"><strong id="current-nickname">…</strong> <span class="edit-hint">(modifier)</span></button></span><button id="copy-code" class="text-button" hidden>Copier le code</button><button id="room-access" class="text-button" hidden>Accès de la room</button><button id="leave-room" class="text-button" hidden>Quitter</button></div>
       <p id="members" class="muted" hidden></p>
     </section>
-    <nav class="composer-tabs" aria-label="Messages"><button type="button" id="show-composer" aria-pressed="true">Composer</button><button type="button" id="show-presets" aria-pressed="false">Enregistrés <span id="preset-count">0</span></button></nav>
+    <nav class="composer-tabs" aria-label="Messages"><button type="button" id="show-composer" aria-pressed="true">Composer</button><button type="button" id="show-presets" aria-pressed="false">Enregistrés <span id="preset-count">0</span></button><button type="button" id="show-history" aria-pressed="false">Historique <span id="history-count">0</span></button></nav>
     <form id="send-form" class="composer">
       <div class="composer-heading"><h2>Votre message</h2></div>
       <label for="caption">Texte <span class="optional">facultatif</span></label>
@@ -22,6 +22,7 @@
       <p id="send-status" class="muted" role="status">Sélectionnez une room pour envoyer.</p>
     </form>
     <section id="presets-panel" class="composer" hidden aria-label="Mèmes enregistrés"><div class="composer-heading"><h2>Mèmes enregistrés</h2><button id="open-saved-folder" type="button">Ouvrir le dossier</button></div><div class="search-wrap"><label for="saved-search" class="search-label">Rechercher</label><input id="saved-search" type="search" placeholder="Nom du fichier…"></div><div id="saved-memes-grid" class="saved-memes-grid"></div></section>
+    <section id="history-panel" class="composer" hidden aria-label="Historique des messages"><div class="composer-heading"><h2>Historique des messages</h2><button id="clear-history" type="button" class="text-button" style="color:var(--muted);font-size:12px;">Effacer l’historique</button></div><div id="history-list" class="history-list"></div></section>
   </main>
   <input id="file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm" hidden>
   <input id="audio-input" type="file" accept="audio/mpeg,audio/wav,audio/ogg" hidden>
