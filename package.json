@@ -1,7 +1,7 @@
 {
   "name": "evil-memeroom",
   "desktopName": "evil-memeroom",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Des réactions en direct, par-dessus votre écran.",
   "private": true,
   "type": "module",
@@ -87,9 +87,9 @@
     },
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://memeroom.tonamielarose.fr/releases/",
-        "useMultipleRangeRequest": false
+        "provider": "github",
+        "owner": "Bourinou",
+        "repo": "evil-memeroom"
       }
     ],
     "nsis": {

@@ -92,7 +92,7 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
     let url;
     try { url = new URL(req.url, 'http://localhost'); } catch { json(res, 400, { error: 'URL invalide.' }); return; }
     try {
-      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'memeroom', version: '0.6.2', persistentRooms: !!dataDir, features: { roomAccess: true, roomDirectory: true, mediaEviction: true, mediaExpiry: true, largeUploads: true, antivirusRequired: process.env.MEMEROOM_SCAN_REQUIRED === '1' || !!process.env.CLAMAV_HOST } }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'memeroom', version: '0.6.3', persistentRooms: !!dataDir, features: { roomAccess: true, roomDirectory: true, mediaEviction: true, mediaExpiry: true, largeUploads: true, antivirusRequired: process.env.MEMEROOM_SCAN_REQUIRED === '1' || !!process.env.CLAMAV_HOST } }); return; }
       if (req.method === 'GET' && url.pathname === '/api/rooms') {
         if (limited(clientIP(req, trustProxy))) { json(res, 429, { error: 'Trop de demandes. Patientez une minute.' }); return; }
         json(res, 200, { rooms: [...rooms.values()].filter(room => !room.isPrivate).map(room => ({ code: room.code, name: room.name, members: room.members.size, passwordRequired: !!room.passwordHash })).sort((a, b) => a.name.localeCompare(b.name, 'fr')) }); return;
