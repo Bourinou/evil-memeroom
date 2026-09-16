@@ -151,12 +151,16 @@ function handleEvent(event) {
   if (event.type === 'room-access') { room.access = event.access; renderRooms(); }
   if (event.type === 'access-changed') { if (target) delete target.joinToken; notify('Les accès de la room ont changé. Rejoignez-la à nouveau.'); }
   if (event.type === 'reaction') {
+    const caption = event.caption || '';
+    const media = event.media || null;
+    const audio = event.audio || null;
+    if (!caption && !media && !audio) return;
     const historyItem = {
       id: event.id,
       sender: event.sender?.name || 'Inconnu',
-      caption: event.caption || '',
-      media: event.media || null,
-      audio: event.audio || null,
+      caption,
+      media,
+      audio,
       duration: event.duration || 5,
       sentAt: event.sentAt || Date.now(),
       server: resolveServer(target.server),
@@ -214,12 +218,16 @@ async function attemptJoin(currentEpoch, create) {
     messageHistory = loadHistoryFromStorage(data.code);
     if (Array.isArray(data.history)) {
       for (const item of data.history.slice().reverse()) {
+        const caption = item.caption || '';
+        const media = item.media || null;
+        const audio = item.audio || null;
+        if (!caption && !media && !audio) continue;
         const itemRecord = {
           id: item.id,
           sender: item.sender?.name || (typeof item.sender === 'string' ? item.sender : 'Inconnu'),
-          caption: item.caption || '',
-          media: item.media || null,
-          audio: item.audio || null,
+          caption,
+          media,
+          audio,
           duration: item.duration || 5,
           sentAt: item.sentAt || Date.now(),
           server: resolveServer(target.server),
@@ -601,7 +609,8 @@ function historyStorageKey(roomCode) {
 function loadHistoryFromStorage(roomCode) {
   try {
     const raw = localStorage.getItem(historyStorageKey(roomCode));
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(item => item && (item.caption || item.media || item.audio)) : [];
   } catch { return []; }
 }
 function saveHistoryToStorage(roomCode, list) {
@@ -649,6 +658,11 @@ async function replayMessage(item) {
   }
 }
 function renderHistory() {
+  const validHistory = messageHistory.filter(item => item && (item.caption || item.media || item.audio));
+  if (validHistory.length !== messageHistory.length) {
+    messageHistory = validHistory;
+    if (room?.code) saveHistoryToStorage(room.code, messageHistory);
+  }
   updateHistoryBadge();
   const container = $('#history-list');
   if (!container) return;
