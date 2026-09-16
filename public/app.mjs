@@ -1032,7 +1032,7 @@ $('#clear-history')?.addEventListener('click', () => {
 });
 $('#duration')?.addEventListener('change', () => {
   const val = Number($('#duration').value);
-  if (!Number.isFinite(val) || val < 1) $('#duration').value = '1';
+  if (!Number.isFinite(val) || val < 0.1) $('#duration').value = '0.1';
   else if (val > 600) $('#duration').value = '600';
 });
 let searchDebounceTimer;

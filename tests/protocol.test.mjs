@@ -41,9 +41,14 @@ test('video and audio use playback completion; text and images keep a fixed time
   }
   assert.equal(validateReaction({mediaId:'image',duration:1},media).durationMode,'fixed');
   assert.equal(validateReaction({mediaId:'image',duration:1},media).duration,1);
+  assert.equal(validateReaction({mediaId:'image',duration:0.1},media).durationMode,'fixed');
+  assert.equal(validateReaction({mediaId:'image',duration:0.1},media).duration,0.1);
   assert.equal(validateReaction({mediaId:'image',duration:2},media).durationMode,'fixed');
-  assert.throws(()=>validateReaction({caption:'Text',duration:0.5,durationMode:'media'},media));
-  assert.throws(()=>validateReaction({caption:'Text',duration:0.8},media), /entre 1 et 15 secondes/);
+  const customReaction = validateReaction({mediaId:'video',duration:4.5,customDuration:true},media);
+  assert.equal(customReaction.durationMode,'fixed');
+  assert.equal(customReaction.duration,4.5);
+  assert.equal(customReaction.customDuration,true);
+  assert.throws(()=>validateReaction({caption:'Text',duration:0.05},media), /entre 0\.1 et 15 secondes/);
 });
 test('saved room state preserves local server identity and deduplicates bookmarks',()=>{
   const room={code:'ABCD2345',name:'Les amis',server:'local'};
