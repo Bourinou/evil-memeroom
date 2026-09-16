@@ -214,6 +214,7 @@ function bindDismissShortcut(value) {
 }
 const settingsPath = () => path.join(app.getPath('userData'), 'preferences.json');
 const clientPath = () => path.join(app.getPath('userData'), 'saved-rooms.json');
+const historyPath = () => path.join(app.getPath('userData'), 'history.json');
 const trustedControl = event => control && event.sender === control.webContents && event.senderFrame === control.webContents.mainFrame && event.senderFrame.url === CONTROL_URL;
 const trustedOverlay = event => overlay && event.sender === overlay.webContents && event.senderFrame === overlay.webContents.mainFrame;
 function secureWindow(window) {
@@ -221,7 +222,9 @@ function secureWindow(window) {
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.on('will-attach-webview', event => event.preventDefault());
 }
+let playbackReplay = false;
 function clearOverlay() {
+  playbackReplay = false;
   generation++; clearTimeout(hideTimer); currentOverlayContentSize = null;
   playbackAbort?.abort(); playbackAbort = null;
   if (playbackDirectory) { const directory = playbackDirectory; playbackDirectory = null; void fs.rm(directory, { recursive:true, force:true, maxRetries:3, retryDelay:100 }).catch(() => {}); }
@@ -230,6 +233,7 @@ function clearOverlay() {
 function sendSettings() { if (control && !control.isDestroyed()) control.webContents.send('settings:changed', settings); }
 let saving = Promise.resolve();
 let clientSaving = Promise.resolve();
+let historySaving = Promise.resolve();
 async function saveClient(value) {
   clientState = protocol.cleanClientState(value);
   const snapshot = JSON.stringify(clientState, null, 2);
@@ -240,6 +244,26 @@ async function saveClient(value) {
   });
   await clientSaving;
   return clientState;
+}
+async function loadHistoryFile() {
+  try {
+    const raw = await fs.readFile(historyPath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+async function saveHistoryFile(list) {
+  const clean = Array.isArray(list) ? list.slice(0, 200) : [];
+  const snapshot = JSON.stringify(clean, null, 2);
+  historySaving = historySaving.catch(() => {}).then(async () => {
+    await fs.mkdir(path.dirname(historyPath()), { recursive: true });
+    await fs.writeFile(historyPath() + '.tmp', snapshot, { mode: 0o600 });
+    await fs.rename(historyPath() + '.tmp', historyPath());
+  });
+  await historySaving;
+  return clean;
 }
 async function applyAutoStart(enabled) {
   if (!app.isPackaged) return;
@@ -328,9 +352,10 @@ function positionOverlay(contentSize) {
   overlay.setBounds({ x, y, width, height });
 }
 async function displayReaction(payload, test = false) {
-  if (settings.paused) return { shown: false, reason: 'paused' };
-  const now = Date.now();
   const replay = Boolean(payload?.replay);
+  if (settings.paused && !replay) return { shown: false, reason: 'paused' };
+  playbackReplay = replay;
+  const now = Date.now();
   if (!test && !replay && (now - lastShown < settings.cooldown * 1000 || seen.has(payload?.id))) return { shown: false, reason: 'cooldown' };
   if (!payload || typeof payload !== 'object') throw new Error('Réaction invalide.');
   const server = protocol.normalizeServer(payload.server);
@@ -345,9 +370,10 @@ async function displayReaction(payload, test = false) {
   lastShown = now;
   if (!replay && typeof payload.id === 'string') { seen.add(payload.id.slice(0,80)); if (seen.size > 100) seen.delete(seen.values().next().value); }
   clearOverlay(); const currentGeneration = generation;
+  playbackReplay = replay;
   const abort = new AbortController(); playbackAbort = abort;
   if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-  if (generation !== currentGeneration || settings.paused) return { shown: false, reason: 'cancelled' };
+  if (generation !== currentGeneration || (settings.paused && !replay)) return { shown: false, reason: 'cancelled' };
   let directory;
   try {
     if (reaction.media || reaction.audio) {
@@ -387,7 +413,7 @@ async function displayReaction(payload, test = false) {
         }
       }
     }
-    if (generation !== currentGeneration || settings.paused) return { shown:false, reason:'cancelled' };
+    if (generation !== currentGeneration || (settings.paused && !replay)) return { shown:false, reason:'cancelled' };
     positionOverlay(); playbackAutomatic = automatic; playbackDuration = reaction.duration;
     overlay.webContents.send('overlay:show', { ...reaction, server, playbackId:currentGeneration, volume:settings.volume, sender:protocol.cleanText(payload.sender?.name,24) });
     hideTimer = setTimeout(clearOverlay, 65000);
@@ -455,7 +481,7 @@ if (singleInstance) app.whenReady().then(async () => {
     }
   }
   baseUrl = `http://127.0.0.1:${address.port}`;
-  const controlSession = session.fromPartition('evil-memeroom-control');
+  const controlSession = session.fromPartition('persist:evil-memeroom-control');
   installControlPage(controlSession);
   for (const currentSession of [session.defaultSession, controlSession]) {
     currentSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -470,12 +496,15 @@ if (singleInstance) app.whenReady().then(async () => {
   overlay = new BrowserWindow({ title: 'evil memeroom Overlay', width: 520, height: 420, show: false, frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false, alwaysOnTop: true, skipTaskbar: true, focusable: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false, webPreferences: { preload: path.join(__dirname, 'overlay-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' } });
   overlayLayer = createOverlayLayer(overlay);
   secureWindow(control); secureWindow(overlay);
-  ipcMain.handle('app:info', event => {
+  ipcMain.handle('app:info', async event => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
     const addresses = Object.values(os.networkInterfaces()).flat().filter(n => n && n.family === 'IPv4' && !n.internal).map(n => `http://${n.address}:${address.port}`);
-    return { settings, clientState, shortcutError, platform: process.platform, server: baseUrl, addresses, displays: screen.getAllDisplays().map((d, i) => ({ id: String(d.id), label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}` })) };
+    const history = await loadHistoryFile();
+    return { settings, clientState, history, shortcutError, platform: process.platform, server: baseUrl, addresses, displays: screen.getAllDisplays().map((d, i) => ({ id: String(d.id), label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}` })) };
   });
   ipcMain.handle('client:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveClient(value); });
+  ipcMain.handle('history:load', async event => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return loadHistoryFile(); });
+  ipcMain.handle('history:save', async (event, list) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveHistoryFile(list); });
   ipcMain.handle('presets:list', event => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.list(); });
   ipcMain.handle('presets:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.save(value); });
   ipcMain.handle('presets:rename', (event, id, name) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.rename(id, name); });
@@ -578,7 +607,7 @@ if (singleInstance) app.whenReady().then(async () => {
   ipcMain.on('overlay:clear', event => { if (trustedControl(event)) clearOverlay(); });
   ipcMain.on('overlay:done', (event, id) => { if (trustedOverlay(event) && id === generation) clearOverlay(); });
   ipcMain.on('overlay:ready', (event, id, contentSize) => {
-    if (trustedOverlay(event) && id === generation && !settings.paused) {
+    if (trustedOverlay(event) && id === generation && (!settings.paused || playbackReplay)) {
       if (contentSize && typeof contentSize.width === 'number' && typeof contentSize.height === 'number') {
         positionOverlay(contentSize);
       }

@@ -168,7 +168,7 @@ function handleEvent(event) {
     };
     if (!messageHistory.some(item => item.id === historyItem.id)) {
       messageHistory.unshift(historyItem);
-      if (room?.code) saveHistoryToStorage(room.code, messageHistory);
+      saveHistoryToStorage(messageHistory);
       updateHistoryBadge();
       if (currentTab === 'history') renderHistory();
     }
@@ -183,7 +183,7 @@ function handleEvent(event) {
 function disconnect() {
   epoch++; clearTimeout(retryTimer); connection?.close(); connection = null; room = null; target = null;
   connected = false; connecting = false; library = []; visual = null; audio = null; cues = []; retries = 0;
-  messageHistory = []; updateHistoryBadge(); if (currentTab === 'history') renderHistory();
+  updateHistoryBadge(); if (currentTab === 'history') renderHistory();
   native?.clear(); status = 'Aucune room sélectionnée.'; renderRooms(); renderAttachments(); renderLibrary(); renderSubtitles();
   $('#password-dialog').close(); $('#access-dialog').close();
 }
@@ -215,7 +215,12 @@ async function attemptJoin(currentEpoch, create) {
     room = data; connected = true; connecting = false; retries = 0; clearTimeout(retryTimer);
     library = data.media;
     visual = library.find(item => item.id === visual?.id) || null; audio = library.find(item => item.id === audio?.id) || null;
-    messageHistory = loadHistoryFromStorage(data.code);
+    const stored = loadHistoryFromStorage();
+    for (const item of stored) {
+      if (!messageHistory.some(existing => existing.id === item.id)) {
+        messageHistory.push(item);
+      }
+    }
     if (Array.isArray(data.history)) {
       for (const item of data.history.slice().reverse()) {
         const caption = item.caption || '';
@@ -237,8 +242,8 @@ async function attemptJoin(currentEpoch, create) {
           messageHistory.unshift(itemRecord);
         }
       }
-      saveHistoryToStorage(data.code, messageHistory);
     }
+    saveHistoryToStorage(messageHistory);
     updateHistoryBadge();
     if (currentTab === 'history') renderHistory();
     client.rooms = [target, ...client.rooms.filter(entry => keyFor(entry) !== keyFor(target))];
@@ -540,10 +545,11 @@ $('#subtitle-input').addEventListener('change', async event => {
   } catch (error) { notify(error.message, true); } finally { event.target.value = ''; }
 });
 $('#clear-subtitles').addEventListener('click', () => { cues = []; renderSubtitles(); });
-$('#preview-play').addEventListener('click', () => {
+function showPreview(reaction) {
   $('#preview-dialog').showModal(); preview?.destroy(); $('#preview-loading').hidden = false;
-  preview = mountReaction($('#large-preview'), currentReaction(), { volume:settings.volume, autoplay:true, onReady:() => { $('#preview-loading').hidden = true; }, onDone:() => $('#preview-dialog').close(), onError:() => { $('#preview-dialog').close(); notify('Impossible de lire ce fichier.', true); } });
-});
+  preview = mountReaction($('#large-preview'), reaction, { volume:settings.volume, autoplay:true, onReady:() => { $('#preview-loading').hidden = true; }, onDone:() => $('#preview-dialog').close(), onError:() => { $('#preview-dialog').close(); notify('Impossible de lire ce fichier.', true); } });
+}
+$('#preview-play').addEventListener('click', () => showPreview(currentReaction()));
 $('#preview-dialog').addEventListener('close', () => { preview?.destroy(); preview = null; });
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.close).close()));
 for (const dialog of document.querySelectorAll('dialog')) {
@@ -603,20 +609,34 @@ $('#test-overlay').addEventListener('click', async () => { if (native) { const r
 let currentTab = 'composer';
 let messageHistory = [];
 
-function historyStorageKey(roomCode) {
-  return `evil-memeroom:history:${roomCode || 'global'}`;
+function historyStorageKey() {
+  return 'evil-memeroom:history';
 }
-function loadHistoryFromStorage(roomCode) {
+function cleanHistory(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(item => {
+    if (!item || typeof item !== 'object') return false;
+    const hasCaption = typeof item.caption === 'string' && item.caption.trim().length > 0;
+    const hasMedia = item.media && typeof item.media === 'object' && (item.media.url || item.media.name);
+    const hasAudio = item.audio && typeof item.audio === 'object' && (item.audio.url || item.audio.name);
+    return hasCaption || hasMedia || hasAudio;
+  }).slice(0, 100);
+}
+function loadHistoryFromStorage() {
   try {
-    const raw = localStorage.getItem(historyStorageKey(roomCode));
+    const raw = localStorage.getItem(historyStorageKey());
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter(item => item && (item.caption || item.media || item.audio)) : [];
+    return cleanHistory(parsed);
   } catch { return []; }
 }
-function saveHistoryToStorage(roomCode, list) {
+function saveHistoryToStorage(list) {
+  const clean = cleanHistory(list);
   try {
-    localStorage.setItem(historyStorageKey(roomCode), JSON.stringify(list.slice(0, 100)));
+    localStorage.setItem(historyStorageKey(), JSON.stringify(clean));
   } catch {}
+  if (native?.saveHistory) {
+    native.saveHistory(clean).catch(() => {});
+  }
 }
 function updateHistoryBadge() {
   const countEl = $('#history-count');
@@ -629,39 +649,95 @@ function formatTime(timestamp) {
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
 }
-async function replayMessage(item) {
+async function insertHistoryItem(item) {
   if (!connected || !room) {
-    notify('Sélectionnez une room avant de rejouer un message.', true);
+    notify('Rejoignez une room avant d’insérer un message.', true);
     return;
   }
-  try {
-    if (native) {
-      const payload = {
-        ...item,
-        delay: 0,
-        age: 0,
-        replay: true,
-        server: item.server || resolveServer(target.server)
-      };
-      const result = await native.show(payload);
-      if (result && result.shown === false) {
-        if (result.reason === 'paused') notify('Reprenez la réception pour rejouer le message.', true);
-        else notify('Le message n’a pas pu être rejoué.', true);
-      } else {
-        notify('Message rejoué.');
-      }
+  showTab('composer');
+  $('#caption').value = item.caption || '';
+  if (item.duration) $('#duration').value = String(item.duration);
+  cues = item.subtitles || item.cues || [];
+  renderSubtitles();
+
+  const filesToUpload = [];
+
+  if (item.media) {
+    const existing = library.find(m => m.id === item.media.id);
+    if (existing) {
+      visual = existing;
     } else {
-      notify('Relecture disponible dans l’application installée.');
+      let file = null;
+      const mediaBase = item.server || resolveServer(target?.server);
+      const url = item.media.url ? new URL(item.media.url, mediaBase).href : '';
+      if (url) {
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            file = new File([blob], item.media.name || 'image', { type: item.media.mime || blob.type });
+          }
+        } catch {}
+      }
+      if (!file && native?.readSavedMeme && item.media.name) {
+        try {
+          const data = await native.readSavedMeme(item.media.name);
+          const ext = item.media.name.slice(item.media.name.lastIndexOf('.')).toLowerCase();
+          const mime = item.media.mime || SAVED_MIME_TYPES[ext] || 'application/octet-stream';
+          file = new File([data.buffer], item.media.name, { type: mime });
+        } catch {}
+      }
+      if (file) filesToUpload.push(file);
     }
-  } catch (err) {
-    notify(`Impossible de rejouer : ${err.message}`, true);
+  } else {
+    visual = null;
   }
+
+  if (item.audio) {
+    const existing = library.find(m => m.id === item.audio.id);
+    if (existing) {
+      audio = existing;
+    } else {
+      let file = null;
+      const mediaBase = item.server || resolveServer(target?.server);
+      const url = item.audio.url ? new URL(item.audio.url, mediaBase).href : '';
+      if (url) {
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            file = new File([blob], item.audio.name || 'audio.mp3', { type: item.audio.mime || blob.type });
+          }
+        } catch {}
+      }
+      if (!file && native?.readSavedMeme && item.audio.name) {
+        try {
+          const data = await native.readSavedMeme(item.audio.name);
+          const ext = item.audio.name.slice(item.audio.name.lastIndexOf('.')).toLowerCase();
+          const mime = item.audio.mime || SAVED_MIME_TYPES[ext] || 'audio/mpeg';
+          file = new File([data.buffer], item.audio.name, { type: mime });
+        } catch {}
+      }
+      if (file) filesToUpload.push(file);
+    }
+  } else {
+    audio = null;
+  }
+
+  renderAttachments();
+  renderSend();
+
+  if (filesToUpload.length > 0) {
+    await uploadFiles(filesToUpload);
+  }
+  notify('Message inséré dans le compositeur.');
 }
+
 function renderHistory() {
-  const validHistory = messageHistory.filter(item => item && (item.caption || item.media || item.audio));
+  const validHistory = cleanHistory(messageHistory);
   if (validHistory.length !== messageHistory.length) {
     messageHistory = validHistory;
-    if (room?.code) saveHistoryToStorage(room.code, messageHistory);
+    saveHistoryToStorage(messageHistory);
   }
   updateHistoryBadge();
   const container = $('#history-list');
@@ -685,15 +761,39 @@ function renderHistory() {
       const mediaBase = item.server || resolveServer(target?.server);
       if (item.media?.kind === 'image') {
         const img = node('img', undefined, 'history-thumb');
-        img.src = item.media.url ? new URL(item.media.url, mediaBase).href : '';
         img.alt = item.media.name || 'Image';
         img.loading = 'lazy';
+        let fallbackDone = false;
+        img.onerror = () => {
+          if (!fallbackDone && item.media?.name) {
+            fallbackDone = true;
+            img.src = `/saved-memes/${encodeURIComponent(item.media.name)}`;
+            return;
+          }
+          img.remove();
+          if (!thumbBox.querySelector('.history-icon')) {
+            thumbBox.append(node('span', '🖼️', 'history-icon'));
+          }
+        };
+        img.src = item.media.url ? new URL(item.media.url, mediaBase).href : '';
         thumbBox.append(img);
       } else if (item.media?.kind === 'video') {
         const vid = node('video', undefined, 'history-thumb');
-        vid.src = item.media.url ? `${new URL(item.media.url, mediaBase).href}#t=0.001` : '';
         vid.muted = true;
         vid.preload = 'metadata';
+        let vidFallbackDone = false;
+        vid.onerror = () => {
+          if (!vidFallbackDone && item.media?.name) {
+            vidFallbackDone = true;
+            vid.src = `/saved-memes/${encodeURIComponent(item.media.name)}#t=0.001`;
+            return;
+          }
+          vid.remove();
+          if (!thumbBox.querySelector('.history-icon')) {
+            thumbBox.append(node('span', '🎬', 'history-icon'));
+          }
+        };
+        vid.src = item.media.url ? `${new URL(item.media.url, mediaBase).href}#t=0.001` : '';
         thumbBox.append(vid);
         thumbBox.append(node('span', 'VID', 'history-badge'));
       } else if (item.audio) {
@@ -717,14 +817,32 @@ function renderHistory() {
     card.append(body);
 
     const actions = node('div', undefined, 'history-actions');
-    const replayBtn = node('button', '▶ Rejouer', 'history-btn-replay primary');
-    replayBtn.type = 'button';
-    replayBtn.setAttribute('title', 'Rejouer ce message');
-    replayBtn.addEventListener('click', e => {
+    const insertBtn = node('button', 'Insérer', 'history-btn-insert');
+    insertBtn.type = 'button';
+    insertBtn.setAttribute('title', 'Insérer dans le compositeur pour modifier ou renvoyer');
+    insertBtn.addEventListener('click', e => {
       e.stopPropagation();
-      replayMessage(item);
+      void insertHistoryItem(item);
     });
-    actions.append(replayBtn);
+    const previewBtn = node('button', 'Aperçu', 'history-btn-preview');
+    previewBtn.type = 'button';
+    previewBtn.setAttribute('title', 'Voir l’aperçu dans l’application');
+    previewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      showPreview({ ...item, server: item.server || resolveServer(target?.server || 'local') });
+    });
+    const delBtn = node('button', '✕', 'history-btn-delete');
+    delBtn.type = 'button';
+    delBtn.setAttribute('title', 'Supprimer ce message de l’historique');
+    delBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      messageHistory = messageHistory.filter(h => h.id !== item.id);
+      saveHistoryToStorage(messageHistory);
+      updateHistoryBadge();
+      renderHistory();
+      notify('Message supprimé de l’historique.');
+    });
+    actions.append(insertBtn, previewBtn, delBtn);
 
     card.append(actions);
     container.append(card);
@@ -895,7 +1013,7 @@ $('#show-presets').addEventListener('click', () => showTab('presets'));
 $('#show-history').addEventListener('click', () => showTab('history'));
 $('#clear-history')?.addEventListener('click', () => {
   messageHistory = [];
-  if (room?.code) saveHistoryToStorage(room.code, messageHistory);
+  saveHistoryToStorage(messageHistory);
   renderHistory();
   updateHistoryBadge();
   notify('Historique effacé.');
@@ -916,12 +1034,21 @@ $('#open-saved-folder')?.addEventListener('click', async () => {
   }
 });
 async function init() {
+  messageHistory = loadHistoryFromStorage();
   if (native) {
     const info = await native.info(); settings = info.settings; localServer = info.server; addresses = info.addresses;
     mac = info.platform === 'darwin';
     if (mac) $('#pause-shortcut-note').textContent = 'Pause rapide : Cmd + Maj + F8';
     if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
     client = cleanClientState(info.clientState || client);
+    if (Array.isArray(info.history) && info.history.length) {
+      const merged = [...messageHistory];
+      for (const item of info.history) {
+        if (!merged.some(m => m.id === item.id)) merged.push(item);
+      }
+      messageHistory = cleanHistory(merged);
+      saveHistoryToStorage(messageHistory);
+    }
     for (const display of info.displays) $('#setting-display').add(new Option(display.label, display.id));
     $('#pause-reception').hidden = false;
     native.onSettings(value => { const pauseChanged = settings.paused !== value.paused; settings = value; renderSettings(); if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {}); });
@@ -929,6 +1056,7 @@ async function init() {
     if (native.onSavedMemesUpdated) native.onSavedMemesUpdated(() => { void loadSavedMemes(); });
     await loadSavedMemes();
   } else $('#reception-settings').hidden = true;
+  updateHistoryBadge();
   renderRooms(); renderSettings(); renderLibrary(); showTab(currentTab);
   if (client.autoJoin && client.active) {
     const saved = client.rooms.find(entry => keyFor(entry) === keyFor(client.active));

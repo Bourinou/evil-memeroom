@@ -30,8 +30,19 @@ export function mountReaction(container, reaction, { volume = 0, autoplay = fals
     let url = asset.playbackURL || new URL(asset.url, reaction.server).href;
     // Overlay file URLs are supplied by the main process after a complete download.
     if (autoplay && !asset.playbackURL) {
-      const response = await fetch(url, { signal:AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]) });
-      if (!response.ok) throw new Error('Fichier indisponible ou expiré.');
+      let response;
+      try {
+        response = await fetch(url, { signal:AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]) });
+      } catch {}
+      if (!response || !response.ok) {
+        if (asset.name) {
+          try {
+            const fallbackResp = await fetch(`/saved-memes/${encodeURIComponent(asset.name)}`, { signal:AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]) });
+            if (fallbackResp.ok) response = fallbackResp;
+          } catch {}
+        }
+      }
+      if (!response || !response.ok) throw new Error('Fichier indisponible ou expiré.');
       if (Number(response.headers.get('content-length')) > LIMITS.uploadBytes) { await response.body.cancel(); throw new Error('Fichier trop volumineux.'); }
       const blob = await response.blob();
       if (dead || completed) return;

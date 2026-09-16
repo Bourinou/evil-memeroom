@@ -172,6 +172,8 @@ dialog section { border-top:1px solid var(--border); margin-top:18px; padding-to
   .history-card { flex-direction:column; align-items:stretch; }
   .history-thumb-box { width:100%; height:110px; }
   .history-actions { flex-direction:row; justify-content:flex-end; }
+  .history-btn-insert, .history-btn-preview { padding:4px 8px; font-size:11px; }
+  .history-btn-delete { padding:4px 6px; }
 }
 
 .history-list { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
@@ -186,7 +188,11 @@ dialog section { border-top:1px solid var(--border); margin-top:18px; padding-to
 .history-sender { font-size:13px; font-weight:700; color:#f87171; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .history-time { font-size:11px; color:var(--muted); flex-shrink:0; }
 .history-caption { font-size:13px; color:#f3f4f6; overflow-wrap:anywhere; line-height:1.4; }
-.history-actions { display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
-.history-btn-replay { font-size:12px; padding:6px 12px; }
-.history-btn-insert { background:#1a1e27; border:1px solid #2e3545; color:#d1d5db; font-size:11px; padding:4px 8px; border-radius:4px; transition:all .15s ease; }
-.history-btn-insert:hover { background:#252b38; border-color:#4b5568; color:#fff; }
+.history-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.history-btn-insert { background:#231114; border:1px solid #5f1418; color:#fca5a5; font-size:12px; font-weight:600; padding:5px 10px; border-radius:4px; text-align:center; transition:all .15s ease; cursor:pointer; }
+.history-btn-insert:hover { background:#3b1419; border-color:#dc2626; color:#fff; box-shadow:0 0 8px rgba(220,38,38,0.35); }
+.history-btn-preview { background:#1a1e27; border:1px solid #2e3545; color:#d1d5db; font-size:12px; padding:5px 10px; border-radius:4px; transition:all .15s ease; cursor:pointer; }
+.history-btn-preview:hover { background:#252b38; border-color:#4b5568; color:#fff; }
+.history-btn-delete { background:transparent; border:1px solid transparent; color:#9ca3af; cursor:pointer; padding:5px 7px; font-size:12px; border-radius:4px; transition:all .15s ease; }
+.history-btn-delete:hover { color:#ef4444; background:#2a1215; border-color:#5f1418; }
+
