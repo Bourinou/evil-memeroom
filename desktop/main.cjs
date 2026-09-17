@@ -595,10 +595,85 @@ if (singleInstance) app.whenReady().then(async () => {
     const buf = await fs.readFile(path.join(MEMEROOM_DIR, safeName));
     return { name: safeName, bytes: buf.byteLength, buffer: buf };
   });
-  ipcMain.handle('media:trim', async (event, { name, buffer, start, end }) => {
+  ipcMain.handle('media:extractAudio', async (event, { name, buffer }) => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const safeName = path.basename(name || 'media');
-    const ext = path.extname(safeName).toLowerCase() || '.mp4';
+    const rawSafeName = path.basename(name || 'media');
+    const safeBaseName = rawSafeName.replace(/\.[^.]+$/, '');
+    const ext = path.extname(rawSafeName).toLowerCase() || '.mp4';
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-audio-'));
+    const inputPath = path.join(tempDir, `input${ext}`);
+    const outputPathMp3 = path.join(tempDir, `${safeBaseName}.mp3`);
+    try {
+      await fs.writeFile(inputPath, Buffer.from(buffer));
+      let ffmpegBin;
+      try {
+        ffmpegBin = require('ffmpeg-static');
+        if (typeof ffmpegBin === 'string' && app.isPackaged) {
+          ffmpegBin = ffmpegBin.replace('app.asar', 'app.asar.unpacked');
+        }
+        if (!ffmpegBin || !require('node:fs').existsSync(ffmpegBin)) {
+          ffmpegBin = 'ffmpeg';
+        }
+      } catch {
+        ffmpegBin = 'ffmpeg';
+      }
+
+      const { execFile } = require('node:child_process');
+      const { promisify } = require('node:util');
+      const execFileAsync = promisify(execFile);
+
+      let extracted = false;
+      try {
+        await execFileAsync(ffmpegBin, [
+          '-y',
+          '-i', inputPath,
+          '-vn',
+          '-c:a', 'libmp3lame',
+          '-q:a', '2',
+          outputPathMp3
+        ], { windowsHide: true });
+        extracted = true;
+      } catch (mp3Err) {}
+
+      if (!extracted) {
+        const outputPathWav = path.join(tempDir, `${safeBaseName}.wav`);
+        try {
+          await execFileAsync(ffmpegBin, [
+            '-y',
+            '-i', inputPath,
+            '-vn',
+            '-f', 'wav',
+            outputPathWav
+          ], { windowsHide: true });
+          const wavBytes = await fs.readFile(outputPathWav);
+          return {
+            name: `${safeBaseName}.wav`,
+            buffer: wavBytes,
+            mime: 'audio/wav',
+            size: wavBytes.length
+          };
+        } catch (wavErr) {
+          throw new Error('Cette vidéo ne contient pas de piste audio exploitable.');
+        }
+      }
+
+      const mp3Bytes = await fs.readFile(outputPathMp3);
+      return {
+        name: `${safeBaseName}.mp3`,
+        buffer: mp3Bytes,
+        mime: 'audio/mpeg',
+        size: mp3Bytes.length
+      };
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+  ipcMain.handle('media:trim', async (event, { name, buffer, start, end, asAudio = false }) => {
+    if (!trustedControl(event)) throw new Error('Accès refusé.');
+    const rawSafeName = path.basename(name || 'media');
+    const baseName = rawSafeName.replace(/\.[^.]+$/, '');
+    const ext = path.extname(rawSafeName).toLowerCase() || '.mp4';
+    const safeName = asAudio ? `${baseName}.mp3` : rawSafeName;
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-trim-'));
     const inputPath = path.join(tempDir, `input${ext}`);
     const outputPath = path.join(tempDir, `trimmed_${safeName}`);
@@ -624,9 +699,47 @@ if (singleInstance) app.whenReady().then(async () => {
       const duration = Math.max(0.1, end - start);
       let trimmed = false;
 
-      // Stream copy preserves per-frame dynamic resolution, aspect ratio animations,
-      // and alpha channels in WebM without re-encoding.
-      if (ext === '.webm') {
+      if (asAudio) {
+        try {
+          await execFileAsync(ffmpegBin, [
+            '-y',
+            '-ss', String(start),
+            '-i', inputPath,
+            '-t', String(duration),
+            '-vn',
+            '-c:a', 'libmp3lame',
+            '-q:a', '2',
+            outputPath
+          ], { windowsHide: true });
+          trimmed = true;
+        } catch (audioErr) {}
+
+        if (!trimmed) {
+          const fallbackWav = path.join(tempDir, `trimmed_${baseName}.wav`);
+          try {
+            await execFileAsync(ffmpegBin, [
+              '-y',
+              '-ss', String(start),
+              '-i', inputPath,
+              '-t', String(duration),
+              '-vn',
+              '-f', 'wav',
+              fallbackWav
+            ], { windowsHide: true });
+            const wavBytes = await fs.readFile(fallbackWav);
+            return {
+              name: `trim_${baseName}.wav`,
+              buffer: wavBytes,
+              mime: 'audio/wav',
+              size: wavBytes.length
+            };
+          } catch (wavErr) {
+            throw new Error('Impossible de découper la piste audio de cette vidéo.');
+          }
+        }
+      } else if (ext === '.webm') {
+        // Stream copy preserves per-frame dynamic resolution, aspect ratio animations,
+        // and alpha channels in WebM without re-encoding.
         try {
           await execFileAsync(ffmpegBin, [
             '-y',
@@ -678,7 +791,8 @@ if (singleInstance) app.whenReady().then(async () => {
       return {
         name: `trim_${safeName}`,
         buffer: trimmedBytes,
-        size: trimmedBytes.length
+        size: trimmedBytes.length,
+        ...(asAudio ? { mime: outputPath.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg' } : {})
       };
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});

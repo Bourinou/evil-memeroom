@@ -147,12 +147,15 @@ function renderAttachments() {
       row.append(image);
     }
     const info = node('div', undefined, 'attachment-info');
-    const kindLabel = asset.kind === 'video'
-      ? (isAudioSlot ? 'Vidéo (son uniquement)' : 'Vidéo')
-      : asset.kind === 'audio' ? 'Audio' : 'Image';
+    const hasOriginalVideo = Boolean(asset._originalVideo);
+    const kindLabel = hasOriginalVideo
+      ? 'Son extrait d’une vidéo'
+      : asset.kind === 'video'
+        ? (isAudioSlot ? 'Vidéo (son uniquement)' : 'Vidéo')
+        : asset.kind === 'audio' ? 'Audio' : 'Image';
     info.append(node('strong', asset.name), node('small', `${kindLabel} · ${(asset.bytes / 1024 / 1024).toFixed(1)} Mo`));
 
-    if (asset.kind === 'video') {
+    if (asset.kind === 'video' || hasOriginalVideo) {
       const checkLabel = node('label', undefined, 'check');
       checkLabel.style.margin = '4px 0 0 0';
       checkLabel.style.fontSize = '12px';
@@ -161,19 +164,46 @@ function renderAttachments() {
       const checkbox = node('input');
       checkbox.type = 'checkbox';
       checkbox.checked = isAudioSlot;
-      checkbox.addEventListener('change', () => {
+      checkbox.addEventListener('change', async () => {
         if (checkbox.checked) {
-          audio = asset;
-          if (visual === asset) visual = null;
+          checkbox.disabled = true;
+          try {
+            let audioAsset = asset;
+            if (asset.kind === 'video') {
+              notify('Extraction du son de la vidéo…');
+              const mediaUrl = new URL(asset.url, resolveServer(target.server)).href;
+              const resp = await fetch(mediaUrl);
+              const arrayBuf = await resp.arrayBuffer();
+              const audioFile = await extractAudioFromFileOrBuffer(asset.name, arrayBuf);
+              audioAsset = await uploadMedia(audioFile, epoch, room);
+              audioAsset._originalVideo = asset;
+              if (!library.some(a => a.id === audioAsset.id)) library.push(audioAsset);
+            }
+            audio = audioAsset;
+            if (visual === asset) visual = null;
+            notify('Piste audio prête.');
+          } catch (err) {
+            checkbox.checked = false;
+            notify(`Erreur lors de l’extraction audio : ${err.message}`, true);
+            return;
+          } finally {
+            checkbox.disabled = false;
+          }
         } else {
-          visual = asset;
-          if (audio === asset) audio = null;
+          if (asset._originalVideo) {
+            visual = asset._originalVideo;
+            audio = null;
+          } else {
+            visual = asset;
+            if (audio === asset) audio = null;
+          }
         }
         if (!hasTimedMedia({ media: visual, audio })) {
           const toggle = $('#custom-duration-toggle');
           if (toggle) toggle.checked = false;
         }
         renderAttachments();
+        renderSend();
       });
       checkLabel.append(checkbox, document.createTextNode('Utiliser uniquement le son'));
       info.append(checkLabel);
@@ -568,6 +598,29 @@ function encodeAudioBufferToWav(audioBuffer) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
+async function extractAudioFromFileOrBuffer(name, arrayBuffer) {
+  if (native?.extractAudio) {
+    const result = await native.extractAudio({
+      name,
+      buffer: new Uint8Array(arrayBuffer)
+    });
+    const mime = result.mime || (result.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
+    const blob = new Blob([result.buffer], { type: mime });
+    return new File([blob], result.name, { type: mime });
+  }
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    const audioBuf = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    const wavBlob = encodeAudioBufferToWav(audioBuf);
+    const baseName = (name || 'audio').replace(/\.[^.]+$/, '');
+    return new File([wavBlob], `${baseName}.wav`, { type: 'audio/wav' });
+  } catch {
+    throw new Error('Cette vidéo ne contient pas de piste audio exploitable.');
+  } finally {
+    audioCtx.close().catch(() => {});
+  }
+}
+
 async function uploadMedia(file, currentEpoch, currentRoom) {
   const server = resolveServer(target.server);
   let response;
@@ -602,6 +655,17 @@ $('#send-form').addEventListener('submit', async event => {
   event.preventDefault(); if ($('#broadcast').disabled) return;
   sending = true; renderSend();
   try {
+    if (audio && audio.kind === 'video') {
+      notify('Préparation de la piste audio…');
+      const mediaUrl = new URL(audio.url, resolveServer(target.server)).href;
+      const resp = await fetch(mediaUrl);
+      const arrayBuf = await resp.arrayBuffer();
+      const audioFile = await extractAudioFromFileOrBuffer(audio.name, arrayBuf);
+      const audioAsset = await uploadMedia(audioFile, epoch, room);
+      audioAsset._originalVideo = audio;
+      if (!library.some(a => a.id === audioAsset.id)) library.push(audioAsset);
+      audio = audioAsset;
+    }
     const payload = currentReaction();
     const durationVal = Number($('#duration').value);
     if (!audio && visual?.kind !== 'video' && Number.isFinite(durationVal) && (durationVal < 2 || durationVal > LIMITS.durationMax)) {
@@ -623,7 +687,12 @@ async function uploadFiles(files, asAudio = false) {
   if (!connected || !room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
   importing = true; renderSend(); const currentEpoch = epoch, currentRoom = room;
   try {
-    for (const file of files.slice(0, 2)) {
+    for (let file of files.slice(0, 2)) {
+      if (asAudio && (file.type.startsWith('video/') || /\.(mp4|webm|mkv|mov)$/i.test(file.name))) {
+        notify('Extraction du son de la vidéo…');
+        const arrayBuf = await file.arrayBuffer();
+        file = await extractAudioFromFileOrBuffer(file.name, arrayBuf);
+      }
       if (file.size > LIMITS.uploadBytes) throw new Error(`${file.name} dépasse 1 Go.`);
       const data = await uploadMedia(file, currentEpoch, currentRoom);
       if (currentEpoch !== epoch || room !== currentRoom) return;
@@ -1143,7 +1212,7 @@ function renderSavedMemes() {
     const actions = node('div', undefined, 'saved-meme-actions');
     const insertBtn = node('button', 'Insérer', 'saved-meme-btn-insert');
     insertBtn.type = 'button';
-    insertBtn.setAttribute('title', 'Utiliser dans le compositeur');
+    insertBtn.setAttribute('title', meme.kind === 'video' ? 'Insérer la vidéo' : 'Utiliser dans le compositeur');
     insertBtn.addEventListener('click', async e => {
       e.stopPropagation();
       if (!connected || !room) { notify('Rejoignez une room avant d’insérer un mème.'); return; }
@@ -1156,6 +1225,28 @@ function renderSavedMemes() {
         await uploadFiles([file]);
       } catch (err) { notify(`Impossible de charger le fichier : ${err.message}`, true); }
     });
+    let insertAudioBtn = null;
+    if (meme.kind === 'video') {
+      insertAudioBtn = node('button', 'Insérer audio', 'saved-meme-btn-insert saved-meme-btn-insert-audio');
+      insertAudioBtn.type = 'button';
+      insertAudioBtn.setAttribute('title', 'Utiliser uniquement le son de cette vidéo');
+      insertAudioBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!connected || !room) { notify('Rejoignez une room avant d’insérer un audio.'); return; }
+        insertAudioBtn.disabled = true;
+        try {
+          notify('Extraction du son de la vidéo…');
+          const fileData = await native.readSavedMeme(meme.name);
+          const audioFile = await extractAudioFromFileOrBuffer(meme.name, fileData.buffer);
+          showMessages(false);
+          await uploadFiles([audioFile], true);
+        } catch (err) {
+          notify(`Impossible d’extraire l’audio : ${err.message}`, true);
+        } finally {
+          insertAudioBtn.disabled = false;
+        }
+      });
+    }
     const renameBtn = node('button', 'Renommer', 'saved-meme-btn-rename');
     renameBtn.type = 'button';
     renameBtn.setAttribute('title', 'Renommer ce mème');
@@ -1176,7 +1267,11 @@ function renderSavedMemes() {
         notify(`« ${meme.name} » supprimé.`);
       } catch (err) { notify(err.message, true); }
     });
-    actions.append(insertBtn, renameBtn, delBtn);
+    if (insertAudioBtn) {
+      actions.append(insertBtn, insertAudioBtn, renameBtn, delBtn);
+    } else {
+      actions.append(insertBtn, renameBtn, delBtn);
+    }
     card.append(thumbBox, name, actions);
     card.addEventListener('click', () => {
       const reaction = {
@@ -1458,12 +1553,13 @@ $('#trim-apply').addEventListener('click', async () => {
         name: trimAsset.name,
         buffer: new Uint8Array(arrayBuf),
         start: trimStart,
-        end: trimEnd
+        end: trimEnd,
+        asAudio: trimTarget === 'audio'
       });
-      const mime = trimAsset.mime || (trimAsset.kind === 'video' ? (trimmed.name.endsWith('.webm') ? 'video/webm' : 'video/mp4') : (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mp3'));
+      const mime = trimmed.mime || (trimTarget === 'audio' ? (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg') : (trimAsset.mime || (trimAsset.kind === 'video' ? (trimmed.name.endsWith('.webm') ? 'video/webm' : 'video/mp4') : (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg'))));
       const blob = new Blob([trimmed.buffer], { type: mime });
       trimmedFile = new File([blob], trimmed.name, { type: mime });
-    } else if (trimAsset.kind === 'audio') {
+    } else if (trimAsset.kind === 'audio' || trimTarget === 'audio') {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       try {
         const resp = await fetch(mediaUrl);

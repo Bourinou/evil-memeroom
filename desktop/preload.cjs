@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('memeroom', {
   renameSavedMeme: (oldName, newName) => ipcRenderer.invoke('savedMemes:rename', oldName, newName),
   readSavedMeme: name => ipcRenderer.invoke('savedMemes:read', name),
   trimMedia: options => ipcRenderer.invoke('media:trim', options),
+  extractAudio: options => ipcRenderer.invoke('media:extractAudio', options),
   loadHistory: () => ipcRenderer.invoke('history:load'),
   saveHistory: list => ipcRenderer.invoke('history:save', list),
   onSavedMemesUpdated: callback => { ipcRenderer.on('savedMemes:updated', () => callback()); },
