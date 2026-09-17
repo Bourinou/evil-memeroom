@@ -1037,6 +1037,8 @@ $('#rename-form')?.addEventListener('submit', async e => {
     else notify(ex.message, true);
   }
 });
+let savedTypeFilter = 'all';
+let savedSortMode = 'name-asc';
 function renderSavedMemes() {
   $('#preset-count').textContent = String(savedMemes.length);
   const grid = $('#saved-memes-grid');
@@ -1045,11 +1047,33 @@ function renderSavedMemes() {
   grid.replaceChildren();
   const rawQuery = $('#saved-search')?.value || '';
   const query = normalizeSearch(rawQuery);
-  const filtered = query
-    ? savedMemes.filter(item => normalizeSearch(item.name).includes(query))
-    : savedMemes;
+  let filtered = savedMemes;
+  if (query) {
+    filtered = filtered.filter(item => normalizeSearch(item.name).includes(query));
+  }
+  if (savedTypeFilter !== 'all') {
+    filtered = filtered.filter(item => item.kind === savedTypeFilter);
+  }
+  filtered = filtered.slice().sort((a, b) => {
+    switch (savedSortMode) {
+      case 'name-asc':
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      case 'name-desc':
+        return b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' });
+      case 'size-asc':
+        return (a.size || 0) - (b.size || 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      case 'size-desc':
+        return (b.size || 0) - (a.size || 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      case 'kind-asc':
+        return (a.kind || '').localeCompare(b.kind || '') || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      case 'kind-desc':
+        return (b.kind || '').localeCompare(a.kind || '') || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      default:
+        return 0;
+    }
+  });
   if (!filtered.length) {
-    const emptyMsg = node('p', savedMemes.length ? 'Aucun mème ne correspond à votre recherche.' : 'Aucun mème enregistré pour le moment. Les mèmes reçus s’enregistrent automatiquement ici.', 'muted');
+    const emptyMsg = node('p', savedMemes.length ? 'Aucun mème ne correspond à votre recherche ou filtre.' : 'Aucun mème enregistré pour le moment. Les mèmes reçus s’enregistrent automatiquement ici.', 'muted');
     emptyMsg.style.gridColumn = '1 / -1';
     emptyMsg.style.padding = '30px 10px';
     emptyMsg.style.textAlign = 'center';
@@ -1154,6 +1178,19 @@ let searchDebounceTimer;
 $('#saved-search')?.addEventListener('input', () => {
   clearTimeout(searchDebounceTimer);
   searchDebounceTimer = setTimeout(renderSavedMemes, 120);
+});
+document.querySelectorAll('.saved-type-filters button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    savedTypeFilter = btn.dataset.type || 'all';
+    document.querySelectorAll('.saved-type-filters button').forEach(b => {
+      b.classList.toggle('selected', b === btn);
+    });
+    renderSavedMemes();
+  });
+});
+$('#saved-sort')?.addEventListener('change', e => {
+  savedSortMode = e.target.value;
+  renderSavedMemes();
 });
 $('#open-saved-folder')?.addEventListener('click', async () => {
   if (native?.openSavedMemesFolder) {
