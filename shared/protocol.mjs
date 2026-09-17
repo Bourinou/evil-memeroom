@@ -36,8 +36,59 @@ export function validCues(cues) {
   if (!Array.isArray(cues)) return [];
   return cues.slice(0, 80).filter(c => c && Number.isFinite(c.start) && Number.isFinite(c.end) && c.start >= 0 && c.end > c.start).map(c => ({ start: c.start, end: c.end, text: cleanText(c.text, 300) }));
 }
+
+export const META_CUE_PREFIX = '@@evil-meta:';
+
+export function embedReactionMeta(cues, meta) {
+  const cleanCues = Array.isArray(cues) ? cues.filter(c => !c.text?.startsWith(META_CUE_PREFIX)) : [];
+  if (!meta) return cleanCues;
+  cleanCues.push({
+    start: 9999,
+    end: 10000,
+    text: `${META_CUE_PREFIX}${JSON.stringify(meta)}`
+  });
+  return cleanCues;
+}
+
+export function extractReactionMeta(reaction) {
+  if (!reaction) return null;
+  const list = reaction.subtitles || reaction.cues || [];
+  if (!Array.isArray(list)) return null;
+  const cue = list.find(c => c.text && typeof c.text === 'string' && c.text.startsWith(META_CUE_PREFIX));
+  if (!cue) return null;
+  try {
+    return JSON.parse(cue.text.slice(META_CUE_PREFIX.length));
+  } catch {
+    return null;
+  }
+}
+
+export function applyReactionMeta(reaction) {
+  if (!reaction) return reaction;
+  const meta = extractReactionMeta(reaction);
+  if (meta) {
+    if (meta.customDuration) {
+      reaction.customDuration = true;
+      reaction.durationMode = 'fixed';
+    }
+    if (Number.isFinite(meta.duration)) {
+      reaction.duration = meta.duration;
+    }
+  }
+  if (Array.isArray(reaction.subtitles)) {
+    reaction.subtitles = reaction.subtitles.filter(c => !c.text?.startsWith(META_CUE_PREFIX));
+  }
+  if (Array.isArray(reaction.cues)) {
+    reaction.cues = reaction.cues.filter(c => !c.text?.startsWith(META_CUE_PREFIX));
+  }
+  return reaction;
+}
+
 export function validateReaction(input, media) {
   if (!input || typeof input !== 'object') throw new Error('Contenu invalide.');
+  const meta = extractReactionMeta(input);
+  const inputCustom = input.customDuration === true || meta?.customDuration === true;
+  const inputDuration = Number.isFinite(Number(input.duration)) ? Number(input.duration) : (meta && Number.isFinite(Number(meta.duration)) ? Number(meta.duration) : null);
   const asset = typeof input.mediaId === 'string' ? media.get(input.mediaId) : null;
   if (input.mediaId && !asset) throw new Error('Ce fichier ne fait pas partie de cette room.');
   const audio = typeof input.audioId === 'string' ? media.get(input.audioId) : (asset?.kind === 'audio' ? asset : null);
@@ -48,14 +99,18 @@ export function validateReaction(input, media) {
   // A bounded numeric fallback keeps the wire format readable by older clients.
   // Updated receivers always use the players' ended events for video/audio.
   const timed = hasTimedMedia({ media: visual, audio });
-  const custom = timed && input.customDuration === true && Number.isFinite(Number(input.duration));
+  const custom = timed && inputCustom && Number.isFinite(inputDuration);
   const automatic = timed && !custom;
   const maxDuration = timed ? 600 : LIMITS.durationMax;
-  const duration = automatic ? LIMITS.durationMax : Number(input.duration);
+  const duration = automatic ? LIMITS.durationMax : inputDuration;
   if (!Number.isFinite(duration) || duration < LIMITS.durationMin || duration > maxDuration) {
     throw new Error(timed ? 'La durée doit être comprise entre 0.1 et 600 secondes.' : 'La durée doit être comprise entre 0.1 et 15 secondes.');
   }
-  return { media: visual ? publicMedia(visual) : null, audio: audio ? publicMedia(audio) : null, name: visual?.name || audio?.name || caption.slice(0, 60), caption, subtitles: validCues(input.subtitles), duration, durationMode: automatic ? 'media' : 'fixed', ...(custom ? { customDuration: true } : {}) };
+  let cleanSubtitles = validCues(input.subtitles);
+  if (custom && !cleanSubtitles.some(c => c.text?.startsWith(META_CUE_PREFIX))) {
+    cleanSubtitles = embedReactionMeta(cleanSubtitles, { customDuration: true, duration });
+  }
+  return { media: visual ? publicMedia(visual) : null, audio: audio ? publicMedia(audio) : null, name: visual?.name || audio?.name || caption.slice(0, 60), caption, subtitles: cleanSubtitles, duration, durationMode: automatic ? 'media' : 'fixed', ...(custom ? { customDuration: true } : {}) };
 }
 export function publicMedia(asset) { return { id: asset.id, name: asset.name, kind: asset.kind, mime: asset.mime, url: `/media/${asset.id}`, bytes: asset.bytes }; }
 export function normalizeServer(value) {

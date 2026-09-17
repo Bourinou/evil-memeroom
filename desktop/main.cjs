@@ -364,8 +364,9 @@ async function displayReaction(payload, test = false) {
     if (!/^[A-Za-z0-9_-]{32}$/.test(item.id) || item.url !== `/media/${item.id}` || !['image','video','audio'].includes(item.kind)) throw new Error('Média invalide.');
     media.set(item.id, { ...item, name: protocol.cleanText(item.name, 80) });
   }
+  protocol.applyReactionMeta(payload);
   const reaction = protocol.validateReaction({ ...payload, mediaId: payload.media?.id, audioId: payload.audio?.id }, media);
-  const automatic = protocol.hasTimedMedia(reaction);
+  const automatic = protocol.hasTimedMedia(reaction) && !reaction.customDuration && reaction.durationMode !== 'fixed';
   const delay = Number.isFinite(payload.delay) ? Math.max(0, Math.min(payload.delay, 1000)) : 0;
   lastShown = now;
   if (!replay && typeof payload.id === 'string') { seen.add(payload.id.slice(0,80)); if (seen.size > 100) seen.delete(seen.values().next().value); }

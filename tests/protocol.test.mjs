@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch, getGifDuration } from '../shared/protocol.mjs';
+import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch, getGifDuration, embedReactionMeta, extractReactionMeta, applyReactionMeta } from '../shared/protocol.mjs';
 import { detectMedia } from '../server/media.mjs';
 test('preferences always respect receiver limits',()=>{
   const p=cleanSettings({size:99,volume:-12,cooldown:0,paused:'true',position:'evil',display:42});
@@ -152,3 +152,31 @@ test('validateReaction supports custom duration with image/gif and audio', () =>
   assert.equal(reaction.duration, 4.5);
   assert.equal(reaction.customDuration, true);
 });
+
+test('embedReactionMeta and applyReactionMeta preserve customDuration through legacy server roundtrip', () => {
+  const media = new Map([
+    ['gif', { id: 'gif', kind: 'image', name: 'animation.gif' }],
+    ['sound', { id: 'sound', kind: 'audio', name: 'sound.wav' }]
+  ]);
+  // Sender creates payload with customDuration
+  const embedded = embedReactionMeta([{ start: 0, end: 2, text: 'Hello' }], { customDuration: true, duration: 2.5 });
+  assert.equal(embedded.length, 2);
+
+  // Simulate legacy v0.5.0 server: strips customDuration, sets durationMode='media', sets duration=15, but keeps subtitles
+  const legacyServerBroadcast = {
+    media: { id: 'gif', kind: 'image' },
+    audio: { id: 'sound', kind: 'audio' },
+    duration: 15,
+    durationMode: 'media',
+    subtitles: validCues(embedded)
+  };
+
+  // Receiver receives broadcast and applies reaction metadata
+  const restored = applyReactionMeta({ ...legacyServerBroadcast });
+  assert.equal(restored.customDuration, true);
+  assert.equal(restored.duration, 2.5);
+  assert.equal(restored.durationMode, 'fixed');
+  assert.equal(restored.subtitles.length, 1);
+  assert.equal(restored.subtitles[0].text, 'Hello');
+});
+

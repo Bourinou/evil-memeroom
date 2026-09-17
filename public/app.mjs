@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch, getGifDuration } from './shared/protocol.mjs';
+import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch, getGifDuration, embedReactionMeta, extractReactionMeta, applyReactionMeta } from './shared/protocol.mjs';
 import { Connection } from './connection.mjs';
 import { mountReaction } from './media-view.mjs';
 
@@ -234,6 +234,7 @@ function currentReaction() {
       duration = Math.max(0.1, Math.round(plays * gifDur * 10) / 10);
     }
   }
+  const payloadCues = custom ? embedReactionMeta(cues, { customDuration: true, duration }) : cues;
   return {
     caption: $('#caption').value,
     sender: client.nickname,
@@ -242,7 +243,8 @@ function currentReaction() {
     media: visual,
     audio,
     duration,
-    subtitles: cues,
+    durationMode: custom ? 'fixed' : (timed ? 'media' : 'fixed'),
+    subtitles: payloadCues,
     server: resolveServer(target?.server || 'local'),
     ...(custom ? { customDuration: true } : {})
   };
@@ -406,6 +408,7 @@ function handleEvent(event) {
   if (event.type === 'room-access') { room.access = event.access; renderRooms(); }
   if (event.type === 'access-changed') { if (target) delete target.joinToken; notify('Les accès de la room ont changé. Rejoignez-la à nouveau.'); }
   if (event.type === 'reaction') {
+    applyReactionMeta(event);
     const caption = event.caption || '';
     const media = event.media || null;
     const audio = event.audio || null;
@@ -942,6 +945,7 @@ $('#subtitle-input').addEventListener('change', async event => {
 });
 $('#clear-subtitles').addEventListener('click', () => { cues = []; renderSubtitles(); });
 function showPreview(reaction) {
+  applyReactionMeta(reaction);
   $('#preview-dialog').showModal(); preview?.destroy(); $('#preview-loading').hidden = false;
   preview = mountReaction($('#large-preview'), reaction, { volume:settings.volume, autoplay:true, onReady:() => { $('#preview-loading').hidden = true; }, onDone:() => $('#preview-dialog').close(), onError:() => { $('#preview-dialog').close(); notify('Impossible de lire ce fichier.', true); } });
 }

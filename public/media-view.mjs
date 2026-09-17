@@ -1,6 +1,7 @@
-import { hasTimedMedia, LIMITS, cleanText } from '../shared/protocol.mjs';
+import { hasTimedMedia, LIMITS, cleanText, applyReactionMeta } from '../shared/protocol.mjs';
 
 export function mountReaction(container, reaction, { volume = 0, autoplay = false, still = false, onReady = () => {}, onDone = () => {}, onError = () => {}, onProgress = () => {} } = {}) {
+  applyReactionMeta(reaction);
   const root = document.createElement('div'); root.className = 'reaction-view'; root.hidden = autoplay;
   const players = [], visuals = [], urls = [], abort = new AbortController();
   let mutedVideo, timer, watchdog, animation, dead = false, completed = false, startedAt;
