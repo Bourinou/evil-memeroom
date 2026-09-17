@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch } from './shared/protocol.mjs';
+import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch, getGifDuration } from './shared/protocol.mjs';
 import { Connection } from './connection.mjs';
 import { mountReaction } from './media-view.mjs';
 
@@ -17,6 +17,7 @@ let status = 'Aucune room sélectionnée.';
 let recordingShortcut = false, shortcutBusy = false;
 let mac = false;
 let savedMemes = [];
+let gifDurationMode = 'plays';
 const SAVED_MIME_TYPES = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.gif':'image/gif', '.webp':'image/webp', '.mp4':'video/mp4', '.webm':'video/webm', '.mp3':'audio/mpeg', '.wav':'audio/wav', '.ogg':'audio/ogg' };
 const shortcutLabel = value => value ? value.split('+').map(key => ({ Control:'Ctrl', Shift:'Maj', Super:mac ? 'Cmd' : 'Windows', Space:'Espace', Up:'Haut', Down:'Bas', Left:'Gauche', Right:'Droite' }[key] || key)).join(' + ') : 'Choisir un raccourci';
 const keyFor = value => value ? `${value.server}|${value.code}` : '';
@@ -98,12 +99,50 @@ function renderSend() {
   if (timed) {
     $('#automatic-duration').textContent = visual?.kind === 'video' ? 'Vidéo complète' : 'Audio complet';
   }
-  const showDurationInput = !timed || custom;
-  $('#duration').hidden = !showDurationInput;
-  $('#duration').disabled = !showDurationInput;
-  $('#duration-label').hidden = !showDurationInput;
-  $('#duration-unit').hidden = !showDurationInput;
+  const showDurationControls = !timed || custom;
   $('#automatic-duration').hidden = !timed || custom;
+
+  const isGif = Boolean(visual && (visual.mime === 'image/gif' || /\.gif$/i.test(visual.name)) && visual.gifDuration);
+  const gifModeSelect = $('#gif-mode-select');
+  const gifPlaysWrap = $('#gif-plays-wrap');
+  const gifPlaysInput = $('#gif-plays');
+  const gifPlaysHint = $('#gif-plays-hint');
+  const durationInput = $('#duration');
+  const durationLabel = $('#duration-label');
+  const durationUnit = $('#duration-unit');
+
+  if (showDurationControls && isGif) {
+    if (durationLabel) durationLabel.hidden = true;
+    if (gifModeSelect) {
+      gifModeSelect.style.display = 'inline-block';
+      gifModeSelect.value = gifDurationMode;
+    }
+    if (gifDurationMode === 'plays') {
+      if (gifPlaysWrap) gifPlaysWrap.style.display = 'inline-flex';
+      if (durationInput) { durationInput.hidden = true; durationInput.disabled = false; }
+      if (durationUnit) durationUnit.hidden = true;
+      const plays = Math.max(1, Math.min(100, Number(gifPlaysInput?.value || 1)));
+      const totalSec = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+      if (durationInput) durationInput.value = String(totalSec);
+      if (gifPlaysHint) {
+        gifPlaysHint.textContent = plays > 1 ? `lectures (${totalSec}s)` : `lecture (${totalSec}s)`;
+      }
+    } else {
+      if (gifPlaysWrap) gifPlaysWrap.style.display = 'none';
+      if (durationInput) { durationInput.hidden = false; durationInput.disabled = false; }
+      if (durationUnit) durationUnit.hidden = false;
+    }
+  } else {
+    if (gifModeSelect) gifModeSelect.style.display = 'none';
+    if (gifPlaysWrap) gifPlaysWrap.style.display = 'none';
+    if (durationLabel) durationLabel.hidden = !showDurationControls;
+    if (durationInput) {
+      durationInput.hidden = !showDurationControls;
+      durationInput.disabled = !showDurationControls;
+    }
+    if (durationUnit) durationUnit.hidden = !showDurationControls;
+  }
+
   const hasContent = !!($('#caption').value.trim() || visual || audio);
   const busy = sending || importing || Date.now() < nextSend;
   $('#broadcast').disabled = !connected || !hasContent || busy;
@@ -120,6 +159,12 @@ function currentReaction() {
   const timed = hasTimedMedia({ media: visual, audio });
   const isTrimmed = !!(visual?.isTrimmed || audio?.isTrimmed);
   const custom = timed && !isTrimmed && !!$('#custom-duration-toggle')?.checked;
+  const isGif = Boolean(visual && (visual.mime === 'image/gif' || /\.gif$/i.test(visual.name)) && visual.gifDuration);
+  let duration = Number($('#duration').value);
+  if (isGif && (!timed || custom) && gifDurationMode === 'plays') {
+    const plays = Math.max(1, Math.min(100, Number($('#gif-plays')?.value || 1)));
+    duration = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+  }
   return {
     caption: $('#caption').value,
     sender: client.nickname,
@@ -127,7 +172,7 @@ function currentReaction() {
     audioId: audio?.id || null,
     media: visual,
     audio,
-    duration: Number($('#duration').value),
+    duration,
     subtitles: cues,
     server: resolveServer(target?.server || 'local'),
     ...(custom ? { customDuration: true } : {})
@@ -531,6 +576,24 @@ $('#custom-duration-toggle')?.addEventListener('change', () => {
   renderSend();
   renderAttachments();
 });
+$('#gif-mode-select')?.addEventListener('change', () => {
+  gifDurationMode = $('#gif-mode-select').value;
+  if (gifDurationMode === 'plays' && visual?.gifDuration) {
+    const plays = Math.max(1, Math.min(100, Number($('#gif-plays')?.value || 1)));
+    const totalSec = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+    if ($('#duration')) $('#duration').value = String(totalSec);
+  }
+  renderSend();
+});
+$('#gif-plays')?.addEventListener('input', () => {
+  const plays = Math.max(1, Math.min(100, Number($('#gif-plays')?.value || 1)));
+  if (visual?.gifDuration) {
+    const totalSec = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+    if ($('#duration')) $('#duration').value = String(totalSec);
+    const hint = $('#gif-plays-hint');
+    if (hint) hint.textContent = plays > 1 ? `lectures (${totalSec}s)` : `lecture (${totalSec}s)`;
+  }
+});
 function createSilentWavBlob(seconds) {
   const sampleRate = 8000;
   const numChannels = 1;
@@ -657,7 +720,7 @@ $('#send-form').addEventListener('submit', async event => {
   try {
     if (audio && audio.kind === 'video') {
       notify('Préparation de la piste audio…');
-      const mediaUrl = new URL(audio.url, resolveServer(target.server)).href;
+      const mediaUrl = new URL(audio.url, resolveServer(target?.server || 'local')).href;
       const resp = await fetch(mediaUrl);
       const arrayBuf = await resp.arrayBuffer();
       const audioFile = await extractAudioFromFileOrBuffer(audio.name, arrayBuf);
@@ -667,7 +730,7 @@ $('#send-form').addEventListener('submit', async event => {
       audio = audioAsset;
     }
     const payload = currentReaction();
-    const durationVal = Number($('#duration').value);
+    const durationVal = Number(payload.duration);
     if (!audio && visual?.kind !== 'video' && Number.isFinite(durationVal) && (durationVal < 2 || durationVal > LIMITS.durationMax)) {
       const silentAsset = await uploadSilentAudio(durationVal);
       payload.audioId = silentAsset.id;
@@ -681,7 +744,31 @@ $('#send-form').addEventListener('submit', async event => {
   catch (error) { notify(error.message, true); }
   finally { sending = false; renderSend(); }
 });
-function attach(asset, asAudio = false) { if (asAudio || asset.kind === 'audio') audio = asset; else visual = asset; renderAttachments(); }
+function attach(asset, asAudio = false) {
+  if (asAudio || asset.kind === 'audio') {
+    audio = asset;
+  } else {
+    visual = asset;
+    if (asset && (asset.mime === 'image/gif' || /\.gif$/i.test(asset.name))) {
+      gifDurationMode = 'plays';
+      const playsInput = $('#gif-plays');
+      if (playsInput) playsInput.value = '1';
+      if (!asset.gifDuration) {
+        const mediaUrl = new URL(asset.url, resolveServer(target?.server || 'local')).href;
+        fetch(mediaUrl).then(r => r.arrayBuffer()).then(buf => {
+          const info = getGifDuration(buf);
+          if (info) {
+            asset.gifDuration = info.durationSec;
+            asset.gifFrameCount = info.frameCount;
+            renderSend();
+          }
+        }).catch(() => {});
+      }
+    }
+  }
+  renderAttachments();
+  renderSend();
+}
 async function uploadFiles(files, asAudio = false) {
   if (importing) return;
   if (!connected || !room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
@@ -693,9 +780,20 @@ async function uploadFiles(files, asAudio = false) {
         const arrayBuf = await file.arrayBuffer();
         file = await extractAudioFromFileOrBuffer(file.name, arrayBuf);
       }
+      let gifInfo = file._gifInfo || null;
+      if (!gifInfo && !asAudio && (file.type === 'image/gif' || /\.gif$/i.test(file.name))) {
+        try {
+          const arrayBuf = await file.arrayBuffer();
+          gifInfo = getGifDuration(arrayBuf);
+        } catch {}
+      }
       if (file.size > LIMITS.uploadBytes) throw new Error(`${file.name} dépasse 1 Go.`);
       const data = await uploadMedia(file, currentEpoch, currentRoom);
       if (currentEpoch !== epoch || room !== currentRoom) return;
+      if (gifInfo) {
+        data.gifDuration = gifInfo.durationSec;
+        data.gifFrameCount = gifInfo.frameCount;
+      }
       if (!library.some(asset => asset.id === data.id)) library.push(data);
       attach(data, asAudio); renderLibrary();
     }
@@ -881,7 +979,7 @@ async function insertHistoryItem(item) {
   if (item.media) {
     const existing = library.find(m => m.id === item.media.id);
     if (existing) {
-      visual = existing;
+      attach(existing, false);
     } else {
       let file = null;
       const mediaBase = item.server || resolveServer(target?.server);
@@ -912,7 +1010,7 @@ async function insertHistoryItem(item) {
   if (item.audio) {
     const existing = library.find(m => m.id === item.audio.id);
     if (existing) {
-      audio = existing;
+      attach(existing, true);
     } else {
       let file = null;
       const mediaBase = item.server || resolveServer(target?.server);
@@ -1221,6 +1319,10 @@ function renderSavedMemes() {
         const ext = meme.name.slice(meme.name.lastIndexOf('.')).toLowerCase();
         const mime = SAVED_MIME_TYPES[ext] || 'application/octet-stream';
         const file = new File([fileData.buffer], meme.name, { type: mime });
+        if (ext === '.gif') {
+          const info = getGifDuration(fileData.buffer);
+          if (info) file._gifInfo = info;
+        }
         showMessages(false);
         await uploadFiles([file]);
       } catch (err) { notify(`Impossible de charger le fichier : ${err.message}`, true); }

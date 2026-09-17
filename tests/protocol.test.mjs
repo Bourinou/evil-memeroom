@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch } from '../shared/protocol.mjs';
+import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch, getGifDuration } from '../shared/protocol.mjs';
 import { detectMedia } from '../server/media.mjs';
 test('preferences always respect receiver limits',()=>{
   const p=cleanSettings({size:99,volume:-12,cooldown:0,paused:'true',position:'evil',display:42});
@@ -111,3 +111,44 @@ test('normalizeSearch treats spaces, hyphens, and underscores equivalently', () 
   assert.equal(normalizeSearch('autre_meme.png').includes(queryNormalized), false);
 });
 
+test('getGifDuration calculates animated GIF loop duration and handles static/corrupted files', () => {
+  assert.equal(getGifDuration(Buffer.alloc(0)), null);
+  assert.equal(getGifDuration(Buffer.from('not a gif')), null);
+
+  const gifBytes = Buffer.from([
+    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, // GIF89a
+    0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x21, 0xF9, 0x04, 0x00, 0x32, 0x00, 0x00, 0x00, // delay 50 = 0.5s
+    0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+    0x02, 0x00,
+    0x21, 0xF9, 0x04, 0x00, 0x64, 0x00, 0x00, 0x00, // delay 100 = 1.0s
+    0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+    0x02, 0x00,
+    0x3B
+  ]);
+
+  const result = getGifDuration(gifBytes);
+  assert.ok(result);
+  assert.equal(result.frameCount, 2);
+  assert.equal(result.durationSec, 1.5);
+
+  const staticGif = Buffer.from([
+    0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+    0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+    0x02, 0x00,
+    0x3B
+  ]);
+  assert.equal(getGifDuration(staticGif), null);
+});
+
+test('validateReaction supports custom duration with image/gif and audio', () => {
+  const media = new Map([
+    ['gif', { id: 'gif', kind: 'image', name: 'animation.gif' }],
+    ['sound', { id: 'sound', kind: 'audio', name: 'sound.wav' }]
+  ]);
+  const reaction = validateReaction({ mediaId: 'gif', audioId: 'sound', duration: 4.5, customDuration: true }, media);
+  assert.equal(reaction.durationMode, 'fixed');
+  assert.equal(reaction.duration, 4.5);
+  assert.equal(reaction.customDuration, true);
+});

@@ -86,9 +86,6 @@ export function mountReaction(container, reaction, { volume = 0, autoplay = fals
       }, 1000);
       checkEnded();
     } else {
-      if (hasTimedMedia(reaction) && players.length > 0) {
-        for (const player of players) player.addEventListener('ended', finish);
-      }
       timer = setTimeout(finish, reaction.duration * 1000);
     }
     if (reaction.subtitles?.length) {

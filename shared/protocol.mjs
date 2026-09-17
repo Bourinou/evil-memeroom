@@ -88,3 +88,71 @@ export function normalizeSearch(value) {
     .replace(/[-_\s]+/g, ' ')
     .trim();
 }
+
+export function getGifDuration(buffer) {
+  try {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 13) return null;
+    const header = String.fromCharCode(...bytes.subarray(0, 6));
+    if (header !== 'GIF87a' && header !== 'GIF89a') return null;
+
+    let pos = 13;
+    const gctFlag = bytes[10] & 0x80;
+    if (gctFlag) {
+      const gctSize = 3 * (1 << ((bytes[10] & 0x07) + 1));
+      pos += gctSize;
+    }
+
+    let totalDelayHundredths = 0;
+    let frameCount = 0;
+    let lastDelay = 10;
+
+    while (pos < bytes.length) {
+      const block = bytes[pos++];
+      if (block === 0x3B) break;
+      if (block === 0x21) {
+        if (pos >= bytes.length) break;
+        const label = bytes[pos++];
+        if (label === 0xF9) {
+          if (pos >= bytes.length) break;
+          const blockSize = bytes[pos++];
+          if (pos + 2 < bytes.length) {
+            const delay = bytes[pos + 1] | (bytes[pos + 2] << 8);
+            lastDelay = delay <= 1 ? 10 : delay;
+          }
+          pos += blockSize;
+          while (pos < bytes.length && bytes[pos] !== 0) pos += bytes[pos] + 1;
+          pos++;
+        } else {
+          while (pos < bytes.length && bytes[pos] !== 0) pos += bytes[pos] + 1;
+          pos++;
+        }
+      } else if (block === 0x2C) {
+        pos += 8;
+        if (pos >= bytes.length) break;
+        const lctFlag = bytes[pos++] & 0x80;
+        if (lctFlag) {
+          const lctSize = 3 * (1 << ((bytes[pos - 1] & 0x07) + 1));
+          pos += lctSize;
+        }
+        pos++;
+        while (pos < bytes.length && bytes[pos] !== 0) pos += bytes[pos] + 1;
+        pos++;
+        frameCount++;
+        totalDelayHundredths += lastDelay;
+        lastDelay = 10;
+      } else {
+        break;
+      }
+    }
+
+    if (frameCount <= 1 || totalDelayHundredths <= 0) return null;
+    return {
+      frameCount,
+      durationSec: Math.round((totalDelayHundredths / 100) * 100) / 100
+    };
+  } catch {
+    return null;
+  }
+}
+
