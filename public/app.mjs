@@ -18,6 +18,59 @@ let recordingShortcut = false, shortcutBusy = false;
 let mac = false;
 let savedMemes = [];
 let gifDurationMode = 'plays';
+const gifDurationCache = new Map();
+function isVisualGif(asset) {
+  if (!asset) return false;
+  return asset.mime === 'image/gif' || /\.gif$/i.test(asset.name || '');
+}
+function cacheGifInfo(asset, info) {
+  if (!asset) return;
+  if (asset.id) gifDurationCache.set(asset.id, info);
+  if (asset.url) gifDurationCache.set(asset.url, info);
+  if (asset.name) gifDurationCache.set(asset.name, info);
+}
+function getCachedGifInfo(asset) {
+  if (!asset) return undefined;
+  if (asset.id && gifDurationCache.has(asset.id)) return gifDurationCache.get(asset.id);
+  if (asset.url && gifDurationCache.has(asset.url)) return gifDurationCache.get(asset.url);
+  if (asset.name && gifDurationCache.has(asset.name)) return gifDurationCache.get(asset.name);
+  return undefined;
+}
+function loadGifDuration(asset) {
+  if (!asset || !isVisualGif(asset)) return;
+  const cached = getCachedGifInfo(asset);
+  if (cached !== undefined) {
+    if (cached) {
+      asset.gifDuration = cached.durationSec;
+      asset.gifFrameCount = cached.frameCount;
+    }
+    return;
+  }
+  if (asset._loadingGif) return;
+  asset._loadingGif = true;
+  const mediaUrl = asset.url ? new URL(asset.url, resolveServer(target?.server || 'local')).href : '';
+  if (!mediaUrl) {
+    asset._loadingGif = false;
+    return;
+  }
+  fetch(mediaUrl)
+    .then(r => r.arrayBuffer())
+    .then(buf => {
+      const info = getGifDuration(buf);
+      cacheGifInfo(asset, info || false);
+      if (info) {
+        asset.gifDuration = info.durationSec;
+        asset.gifFrameCount = info.frameCount;
+      }
+      renderSend();
+    })
+    .catch(() => {
+      cacheGifInfo(asset, false);
+    })
+    .finally(() => {
+      asset._loadingGif = false;
+    });
+}
 const SAVED_MIME_TYPES = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.gif':'image/gif', '.webp':'image/webp', '.mp4':'video/mp4', '.webm':'video/webm', '.mp3':'audio/mpeg', '.wav':'audio/wav', '.ogg':'audio/ogg' };
 const shortcutLabel = value => value ? value.split('+').map(key => ({ Control:'Ctrl', Shift:'Maj', Super:mac ? 'Cmd' : 'Windows', Space:'Espace', Up:'Haut', Down:'Bas', Left:'Gauche', Right:'Droite' }[key] || key)).join(' + ') : 'Choisir un raccourci';
 const keyFor = value => value ? `${value.server}|${value.code}` : '';
@@ -102,7 +155,10 @@ function renderSend() {
   const showDurationControls = !timed || custom;
   $('#automatic-duration').hidden = !timed || custom;
 
-  const isGif = Boolean(visual && (visual.mime === 'image/gif' || /\.gif$/i.test(visual.name)) && visual.gifDuration);
+  const isGif = isVisualGif(visual);
+  if (isGif) loadGifDuration(visual);
+  const cachedGif = getCachedGifInfo(visual);
+  const isAnimatedGif = isGif && cachedGif !== false;
   const gifModeSelect = $('#gif-mode-select');
   const gifPlaysWrap = $('#gif-plays-wrap');
   const gifPlaysInput = $('#gif-plays');
@@ -111,7 +167,7 @@ function renderSend() {
   const durationLabel = $('#duration-label');
   const durationUnit = $('#duration-unit');
 
-  if (showDurationControls && isGif) {
+  if (showDurationControls && isAnimatedGif) {
     if (durationLabel) durationLabel.hidden = true;
     if (gifModeSelect) {
       gifModeSelect.style.display = 'inline-block';
@@ -121,11 +177,19 @@ function renderSend() {
       if (gifPlaysWrap) gifPlaysWrap.style.display = 'inline-flex';
       if (durationInput) { durationInput.hidden = true; durationInput.disabled = false; }
       if (durationUnit) durationUnit.hidden = true;
-      const plays = Math.max(1, Math.min(100, Number(gifPlaysInput?.value || 1)));
-      const totalSec = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
-      if (durationInput) durationInput.value = String(totalSec);
-      if (gifPlaysHint) {
-        gifPlaysHint.textContent = plays > 1 ? `lectures (${totalSec}s)` : `lecture (${totalSec}s)`;
+      const plays = Math.max(1, Math.min(100, Math.round(Number(gifPlaysInput?.value || 1))));
+      const gifDur = visual?.gifDuration || (cachedGif ? cachedGif.durationSec : null);
+      if (gifDur) {
+        const totalSec = Math.max(0.1, Math.round(plays * gifDur * 10) / 10);
+        if (durationInput) durationInput.value = String(totalSec);
+        if (gifPlaysHint) {
+          gifPlaysHint.textContent = plays > 1 ? `lectures (${totalSec}s)` : `lecture (${totalSec}s)`;
+        }
+      } else {
+        if (durationInput && !durationInput.value) durationInput.value = '5';
+        if (gifPlaysHint) {
+          gifPlaysHint.textContent = plays > 1 ? 'lectures' : 'lecture';
+        }
       }
     } else {
       if (gifPlaysWrap) gifPlaysWrap.style.display = 'none';
@@ -159,11 +223,16 @@ function currentReaction() {
   const timed = hasTimedMedia({ media: visual, audio });
   const isTrimmed = !!(visual?.isTrimmed || audio?.isTrimmed);
   const custom = timed && !isTrimmed && !!$('#custom-duration-toggle')?.checked;
-  const isGif = Boolean(visual && (visual.mime === 'image/gif' || /\.gif$/i.test(visual.name)) && visual.gifDuration);
+  const isGif = isVisualGif(visual);
+  const cachedGif = getCachedGifInfo(visual);
+  const isAnimatedGif = isGif && cachedGif !== false;
   let duration = Number($('#duration').value);
-  if (isGif && (!timed || custom) && gifDurationMode === 'plays') {
-    const plays = Math.max(1, Math.min(100, Number($('#gif-plays')?.value || 1)));
-    duration = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+  if (isAnimatedGif && (!timed || custom) && gifDurationMode === 'plays') {
+    const plays = Math.max(1, Math.min(100, Math.round(Number($('#gif-plays')?.value || 1))));
+    const gifDur = visual?.gifDuration || (cachedGif ? cachedGif.durationSec : null);
+    if (gifDur) {
+      duration = Math.max(0.1, Math.round(plays * gifDur * 10) / 10);
+    }
   }
   return {
     caption: $('#caption').value,
@@ -187,7 +256,7 @@ function renderAttachments() {
     const row = node('div', undefined, 'attachment');
     if (asset.kind !== 'audio') {
       const image = node(asset.kind === 'video' ? 'video' : 'img');
-      image.src = new URL(asset.url, resolveServer(target.server)).href;
+      image.src = new URL(asset.url, resolveServer(target?.server || 'local')).href;
       if (asset.kind === 'video') { image.muted = true; image.preload = 'metadata'; } else image.alt = asset.name;
       row.append(image);
     }
@@ -213,10 +282,12 @@ function renderAttachments() {
         if (checkbox.checked) {
           checkbox.disabled = true;
           try {
+            const targetVideoId = asset.id;
+            const wasVisual = visual === asset || visual?.id === targetVideoId;
             let audioAsset = asset;
             if (asset.kind === 'video') {
               notify('Extraction du son de la vidéo…');
-              const mediaUrl = new URL(asset.url, resolveServer(target.server)).href;
+              const mediaUrl = new URL(asset.url, resolveServer(target?.server || 'local')).href;
               const resp = await fetch(mediaUrl);
               const arrayBuf = await resp.arrayBuffer();
               const audioFile = await extractAudioFromFileOrBuffer(asset.name, arrayBuf);
@@ -225,7 +296,9 @@ function renderAttachments() {
               if (!library.some(a => a.id === audioAsset.id)) library.push(audioAsset);
             }
             audio = audioAsset;
-            if (visual === asset) visual = null;
+            if (wasVisual || visual?.id === targetVideoId || visual === asset || visual?._originalVideo?.id === targetVideoId) {
+              visual = null;
+            }
             notify('Piste audio prête.');
           } catch (err) {
             checkbox.checked = false;
@@ -310,10 +383,23 @@ function handleEvent(event) {
     library = event.media;
     const isVisualTrimmed = visual?.isTrimmed;
     const isAudioTrimmed = audio?.isTrimmed;
-    visual = library.find(item => item.id === visual?.id) || visual;
-    audio = library.find(item => item.id === audio?.id) || audio;
+    const prevVisual = visual;
+    const prevAudio = audio;
+    visual = library.find(item => item.id === prevVisual?.id) || visual;
+    audio = library.find(item => item.id === prevAudio?.id) || audio;
     if (visual && isVisualTrimmed) visual.isTrimmed = true;
     if (audio && isAudioTrimmed) audio.isTrimmed = true;
+    if (visual) {
+      if (prevVisual?.gifDuration) {
+        visual.gifDuration = prevVisual.gifDuration;
+        visual.gifFrameCount = prevVisual.gifFrameCount;
+      }
+      const cached = getCachedGifInfo(visual);
+      if (cached) {
+        visual.gifDuration = cached.durationSec;
+        visual.gifFrameCount = cached.frameCount;
+      }
+    }
     renderLibrary();
     renderAttachments();
   }
@@ -578,22 +664,28 @@ $('#custom-duration-toggle')?.addEventListener('change', () => {
 });
 $('#gif-mode-select')?.addEventListener('change', () => {
   gifDurationMode = $('#gif-mode-select').value;
-  if (gifDurationMode === 'plays' && visual?.gifDuration) {
-    const plays = Math.max(1, Math.min(100, Number($('#gif-plays')?.value || 1)));
-    const totalSec = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+  const cached = getCachedGifInfo(visual);
+  const gifDur = visual?.gifDuration || (cached ? cached.durationSec : null);
+  if (gifDurationMode === 'plays' && gifDur) {
+    const plays = Math.max(1, Math.min(100, Math.round(Number($('#gif-plays')?.value || 1))));
+    const totalSec = Math.max(0.1, Math.round(plays * gifDur * 10) / 10);
     if ($('#duration')) $('#duration').value = String(totalSec);
   }
   renderSend();
 });
-$('#gif-plays')?.addEventListener('input', () => {
-  const plays = Math.max(1, Math.min(100, Number($('#gif-plays')?.value || 1)));
-  if (visual?.gifDuration) {
-    const totalSec = Math.max(0.1, Math.round(plays * visual.gifDuration * 10) / 10);
+const updateGifPlays = () => {
+  const plays = Math.max(1, Math.min(100, Math.round(Number($('#gif-plays')?.value || 1))));
+  const cached = getCachedGifInfo(visual);
+  const gifDur = visual?.gifDuration || (cached ? cached.durationSec : null);
+  if (gifDur) {
+    const totalSec = Math.max(0.1, Math.round(plays * gifDur * 10) / 10);
     if ($('#duration')) $('#duration').value = String(totalSec);
     const hint = $('#gif-plays-hint');
     if (hint) hint.textContent = plays > 1 ? `lectures (${totalSec}s)` : `lecture (${totalSec}s)`;
   }
-});
+};
+$('#gif-plays')?.addEventListener('input', updateGifPlays);
+$('#gif-plays')?.addEventListener('change', updateGifPlays);
 function createSilentWavBlob(seconds) {
   const sampleRate = 8000;
   const numChannels = 1;
@@ -735,6 +827,7 @@ $('#send-form').addEventListener('submit', async event => {
       const silentAsset = await uploadSilentAudio(durationVal);
       payload.audioId = silentAsset.id;
       payload.audio = silentAsset;
+      payload.customDuration = true;
     }
     await connection.request('broadcast', payload);
     nextSend = Date.now() + 3000;
@@ -749,21 +842,11 @@ function attach(asset, asAudio = false) {
     audio = asset;
   } else {
     visual = asset;
-    if (asset && (asset.mime === 'image/gif' || /\.gif$/i.test(asset.name))) {
+    if (isVisualGif(asset)) {
       gifDurationMode = 'plays';
       const playsInput = $('#gif-plays');
       if (playsInput) playsInput.value = '1';
-      if (!asset.gifDuration) {
-        const mediaUrl = new URL(asset.url, resolveServer(target?.server || 'local')).href;
-        fetch(mediaUrl).then(r => r.arrayBuffer()).then(buf => {
-          const info = getGifDuration(buf);
-          if (info) {
-            asset.gifDuration = info.durationSec;
-            asset.gifFrameCount = info.frameCount;
-            renderSend();
-          }
-        }).catch(() => {});
-      }
+      loadGifDuration(asset);
     }
   }
   renderAttachments();
@@ -793,6 +876,8 @@ async function uploadFiles(files, asAudio = false) {
       if (gifInfo) {
         data.gifDuration = gifInfo.durationSec;
         data.gifFrameCount = gifInfo.frameCount;
+        cacheGifInfo(data, gifInfo);
+        cacheGifInfo({ id: data.id, url: data.url, name: file.name }, gifInfo);
       }
       if (!library.some(asset => asset.id === data.id)) library.push(data);
       attach(data, asAudio); renderLibrary();
@@ -1321,7 +1406,10 @@ function renderSavedMemes() {
         const file = new File([fileData.buffer], meme.name, { type: mime });
         if (ext === '.gif') {
           const info = getGifDuration(fileData.buffer);
-          if (info) file._gifInfo = info;
+          if (info) {
+            file._gifInfo = info;
+            cacheGifInfo({ name: meme.name }, info);
+          }
         }
         showMessages(false);
         await uploadFiles([file]);
