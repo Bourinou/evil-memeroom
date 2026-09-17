@@ -1,5 +1,5 @@
 export const LIMITS = Object.freeze({ uploadBytes: 1024 ** 3, roomBytes: 2 * 1024 ** 3, totalBytes: 8 * 1024 ** 3, mediaTtlMs: 10 * 60 * 1000, transferTimeoutMs: 30 * 60 * 1000, durationMin: 0.1, durationMax: 15, playbackStallMs: 30000, cooldownMs: 3000, members: 16, mediaCount: 30 });
-export function hasTimedMedia(reaction) { return reaction.media?.kind === 'video' || reaction.media?.kind === 'audio' || reaction.audio?.kind === 'audio'; }
+export function hasTimedMedia(reaction) { return reaction.media?.kind === 'video' || reaction.media?.kind === 'audio' || reaction.audio?.kind === 'audio' || reaction.audio?.kind === 'video'; }
 export const DEFAULT_SETTINGS = Object.freeze({ paused: false, hideSelf: false, autoStart: true, volume: 45, size: 60, cooldown: 5, position: 'center', display: 'primary', dismissShortcut: 'Control+Shift+F9' });
 export function validDismissShortcut(value) {
   if (value === '') return true;
@@ -41,7 +41,7 @@ export function validateReaction(input, media) {
   const asset = typeof input.mediaId === 'string' ? media.get(input.mediaId) : null;
   if (input.mediaId && !asset) throw new Error('Ce fichier ne fait pas partie de cette room.');
   const audio = typeof input.audioId === 'string' ? media.get(input.audioId) : (asset?.kind === 'audio' ? asset : null);
-  if (input.audioId && (!audio || audio.kind !== 'audio')) throw new Error('Piste audio invalide.');
+  if (input.audioId && (!audio || (audio.kind !== 'audio' && audio.kind !== 'video'))) throw new Error('Piste audio invalide.');
   const visual = asset?.kind === 'audio' ? null : asset;
   const caption = cleanText(input.caption, 500);
   if (!visual && !audio && !caption) throw new Error('Ajoutez du texte ou un fichier.');

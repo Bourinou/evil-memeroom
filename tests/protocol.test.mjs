@@ -32,6 +32,15 @@ test('audio can be sent by itself, or with a visual and text',()=>{
   const combined=validateReaction({mediaId:'image',audioId:'sound',caption:'Salut',duration:5},media);
   assert.equal(combined.media.id,'image');assert.equal(combined.audio.id,'sound');assert.equal(combined.caption,'Salut');
 });
+test('video can be used as audio-only, or combined with another visual video',()=>{
+  const media=new Map([['v1',{id:'v1',kind:'video',name:'clip1.webm'}],['v2',{id:'v2',kind:'video',name:'clip2.mp4'}]]);
+  const audioOnly=validateReaction({audioId:'v1',duration:5},media);
+  assert.equal(audioOnly.media,null);assert.equal(audioOnly.audio.id,'v1');
+  assert.equal(hasTimedMedia(audioOnly),true);assert.equal(audioOnly.durationMode,'media');
+  const dual=validateReaction({mediaId:'v1',audioId:'v2',duration:5},media);
+  assert.equal(dual.media.id,'v1');assert.equal(dual.audio.id,'v2');
+  assert.equal(hasTimedMedia(dual),true);assert.equal(dual.durationMode,'media');
+});
 test('video and audio use playback completion; text and images keep a fixed timer',()=>{
   const media=new Map([['video',{id:'video',kind:'video',name:'clip.webm'}],['sound',{id:'sound',kind:'audio',name:'sound.wav'}],['image',{id:'image',kind:'image',name:'image.png'}]]);
   for (const input of [{mediaId:'video'},{audioId:'sound'},{mediaId:'image',audioId:'sound'},{mediaId:'video',audioId:'sound'}]) {

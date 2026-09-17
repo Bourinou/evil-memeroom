@@ -138,6 +138,7 @@ function renderAttachments() {
   for (const player of list.querySelectorAll('audio,video')) { player.pause(); player.removeAttribute('src'); player.load(); }
   list.replaceChildren();
   for (const asset of [visual, audio].filter(Boolean)) {
+    const isAudioSlot = asset === audio;
     const row = node('div', undefined, 'attachment');
     if (asset.kind !== 'audio') {
       const image = node(asset.kind === 'video' ? 'video' : 'img');
@@ -146,7 +147,38 @@ function renderAttachments() {
       row.append(image);
     }
     const info = node('div', undefined, 'attachment-info');
-    info.append(node('strong', asset.name), node('small', `${asset.kind === 'video' ? 'Vidéo' : asset.kind === 'audio' ? 'Audio' : 'Image'} · ${(asset.bytes / 1024 / 1024).toFixed(1)} Mo`));
+    const kindLabel = asset.kind === 'video'
+      ? (isAudioSlot ? 'Vidéo (son uniquement)' : 'Vidéo')
+      : asset.kind === 'audio' ? 'Audio' : 'Image';
+    info.append(node('strong', asset.name), node('small', `${kindLabel} · ${(asset.bytes / 1024 / 1024).toFixed(1)} Mo`));
+
+    if (asset.kind === 'video') {
+      const checkLabel = node('label', undefined, 'check');
+      checkLabel.style.margin = '4px 0 0 0';
+      checkLabel.style.fontSize = '12px';
+      checkLabel.style.gap = '5px';
+      checkLabel.style.cursor = 'pointer';
+      const checkbox = node('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isAudioSlot;
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          audio = asset;
+          if (visual === asset) visual = null;
+        } else {
+          visual = asset;
+          if (audio === asset) audio = null;
+        }
+        if (!hasTimedMedia({ media: visual, audio })) {
+          const toggle = $('#custom-duration-toggle');
+          if (toggle) toggle.checked = false;
+        }
+        renderAttachments();
+      });
+      checkLabel.append(checkbox, document.createTextNode('Utiliser uniquement le son'));
+      info.append(checkLabel);
+    }
+
     const actions = node('div', undefined, 'row');
     actions.style.gap = '8px';
     if (asset.kind === 'video' || asset.kind === 'audio') {
@@ -585,8 +617,8 @@ $('#send-form').addEventListener('submit', async event => {
   catch (error) { notify(error.message, true); }
   finally { sending = false; renderSend(); }
 });
-function attach(asset) { if (asset.kind === 'audio') audio = asset; else visual = asset; renderAttachments(); }
-async function uploadFiles(files) {
+function attach(asset, asAudio = false) { if (asAudio || asset.kind === 'audio') audio = asset; else visual = asset; renderAttachments(); }
+async function uploadFiles(files, asAudio = false) {
   if (importing) return;
   if (!connected || !room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
   importing = true; renderSend(); const currentEpoch = epoch, currentRoom = room;
@@ -596,7 +628,7 @@ async function uploadFiles(files) {
       const data = await uploadMedia(file, currentEpoch, currentRoom);
       if (currentEpoch !== epoch || room !== currentRoom) return;
       if (!library.some(asset => asset.id === data.id)) library.push(data);
-      attach(data); renderLibrary();
+      attach(data, asAudio); renderLibrary();
     }
   } catch (error) { notify(error.name === 'TimeoutError' ? 'L’import a pris trop de temps.' : error.message, true); }
   finally { importing = false; renderSend(); }
@@ -607,7 +639,7 @@ $('#attach-file').addEventListener('click', () => {
 });
 $('#file-input').addEventListener('change', event => { uploadFiles([...event.target.files]); event.target.value = ''; });
 $('#attach-audio').addEventListener('click', () => { if (!connected) { notify('Sélectionnez une room avant d’ajouter un audio.'); return; } $('#audio-input').click(); });
-$('#audio-input').addEventListener('change', event => { uploadFiles([...event.target.files]); event.target.value = ''; });
+$('#audio-input').addEventListener('change', event => { uploadFiles([...event.target.files], true); event.target.value = ''; });
 for (const type of ['dragenter','dragover']) $('#drop-zone').addEventListener(type, event => { event.preventDefault(); $('#drop-zone').classList.add('dragging'); });
 $('#drop-zone').addEventListener('dragleave', () => $('#drop-zone').classList.remove('dragging'));
 $('#drop-zone').addEventListener('drop', event => { event.preventDefault(); $('#drop-zone').classList.remove('dragging'); uploadFiles([...event.dataTransfer.files]); });
@@ -1367,7 +1399,7 @@ async function drawTrimVisualizer(asset, mediaUrl, duration) {
 
 function openTrimDialog(asset) {
   trimAsset = asset;
-  trimTarget = (asset === visual || asset?.id === visual?.id || asset.kind === 'video') ? 'visual' : 'audio';
+  trimTarget = (asset === audio) ? 'audio' : 'visual';
   trimStart = 0;
   trimEnd = 0;
   trimTotalDuration = 0;
