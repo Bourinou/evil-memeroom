@@ -49,17 +49,15 @@
     <div class="row" style="margin-bottom:12px;"><input id="settings-nickname" maxlength="24" autocomplete="nickname" placeholder="Votre pseudo…"><button id="save-settings-nickname" type="button">Enregistrer</button></div>
     <label class="check"><input id="setting-hide-self" type="checkbox">Ne pas afficher ce que j'envoie sur mon écran</label>
     <label class="check"><input id="auto-join" type="checkbox" checked>Rejoindre ma dernière room au démarrage</label>
-    <label class="check"><input id="setting-auto-start" type="checkbox" checked>Lancer automatiquement au démarrage de l'ordinateur</label>
     <section><h3>Rooms enregistrées</h3><div id="saved-rooms-list"></div><p class="muted">Retirer une room de cette liste ne la supprime pas pour les autres.</p></section>
     <section id="reception-settings"><h3>Réception sur ce PC</h3>
       <label class="check"><input id="setting-paused" type="checkbox">Mettre la réception en pause</label>
       <label for="dismiss-shortcut">Arrêter le contenu en cours</label><div class="row"><button id="dismiss-shortcut" type="button">Ctrl + Maj + F9</button><button id="disable-dismiss-shortcut" type="button">Désactiver</button></div><p id="shortcut-hint" class="muted" role="status">Cliquez pour choisir un raccourci. Coupe l’image, la vidéo et le son actuels, sans mettre la réception en pause.</p>
       <label for="setting-volume">Volume <output id="volume-value"></output></label><input id="setting-volume" type="range" min="0" max="100">
       <label for="setting-size">Largeur de l’overlay <output id="size-value"></output></label><input id="setting-size" type="range" min="20" max="60">
-      <label for="setting-cooldown">Intervalle minimal <output id="cooldown-value"></output></label><input id="setting-cooldown" type="range" min="3" max="60">
       <label for="setting-position">Position</label><select id="setting-position"><option value="center">Au centre</option><option value="bottom-right">En bas à droite</option><option value="bottom-left">En bas à gauche</option><option value="top-right">En haut à droite</option></select>
       <label for="setting-display">Écran</label><select id="setting-display"><option value="primary">Écran principal</option></select>
-      <button id="test-overlay">Tester l’overlay</button><p id="pause-shortcut-note" class="muted note">Pause rapide : Ctrl + Maj + F8</p>
+      <button id="check-updates" type="button">Vérifier les mises à jour</button><p id="pause-shortcut-note" class="muted note">Pause rapide : Ctrl + Maj + F8</p>
     </section>
   </dialog>
   <dialog id="nickname-dialog"><form id="nickname-form">

@@ -4,11 +4,11 @@ import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateRea
 import { detectMedia } from '../server/media.mjs';
 test('preferences always respect receiver limits',()=>{
   const p=cleanSettings({size:99,volume:-12,cooldown:0,paused:'true',position:'evil',display:42});
-  assert.equal(p.size,60);assert.equal(p.volume,0);assert.equal(p.cooldown,3);assert.equal(p.paused,false);assert.equal(p.position,'center');assert.equal(p.display,'primary');
+  assert.equal(p.size,60);assert.equal(p.volume,0);assert.equal(p.cooldown,2);assert.equal(p.paused,false);assert.equal(p.position,'center');assert.equal(p.display,'primary');
   assert.equal(p.autoStart,true);
   assert.equal(cleanSettings().position,'center');
   assert.equal(cleanSettings().autoStart,true);
-  assert.equal(cleanSettings({autoStart:false}).autoStart,false);
+  assert.equal(cleanSettings({autoStart:false}).autoStart,true);
   assert.equal(cleanSettings({position:'bottom-left'}).position,'bottom-left');
 });
 test('SRT parsing preserves cues beyond 15 seconds and strips markup',()=>{

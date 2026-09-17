@@ -141,7 +141,7 @@ dialog section { border-top:1px solid var(--border); margin-top:18px; padding-to
 .reaction-caption { font-size:clamp(26px,4vw,54px); max-height:45%; overflow:hidden; flex-shrink:0; }
 .reaction-sender { font-size:clamp(22px,3vw,40px); max-width:100%; }
 #settings-dialog { width:min(560px,calc(100% - 30px)); }
-#test-overlay { margin-top:18px; }
+#check-updates, #test-overlay { margin-top:18px; }
 .composer-tabs { display:flex; gap:6px; margin-bottom:12px; }
 .composer-tabs button { background:transparent; border-color:transparent; position:relative; transition:all .2s ease; }
 .composer-tabs button[aria-pressed=true] { background:#13161d; border-color:var(--border); font-weight:650; color:#f87171; box-shadow:0 0 12px rgba(220,38,38,0.15); }

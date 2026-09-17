@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('memeroom', {
   test: () => ipcRenderer.invoke('overlay:test'),
   clear: () => ipcRenderer.send('overlay:clear'),
   minimize: () => ipcRenderer.invoke('app:minimize'),
+  restart: () => ipcRenderer.invoke('app:restart'),
   listSavedMemes: () => ipcRenderer.invoke('savedMemes:list'),
   openSavedMemesFolder: () => ipcRenderer.invoke('savedMemes:openFolder'),
   openSavedMemeFile: name => ipcRenderer.invoke('savedMemes:openFile', name),

@@ -824,6 +824,12 @@ if (singleInstance) app.whenReady().then(async () => {
   });
   ipcMain.on('overlay:error', (event, message, id) => { if (trustedOverlay(event) && id === generation) { clearOverlay(); control.webContents.send('overlay:error', protocol.cleanText(message, 160)); } });
   ipcMain.handle('app:minimize', event => { if (trustedControl(event)) { if (process.platform === 'linux') control.minimize(); else control.hide(); } });
+  ipcMain.handle('app:restart', event => {
+    if (!trustedControl(event)) throw new Error('Accès refusé.');
+    app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden' && a !== '--silent') });
+    quitting = true;
+    app.exit(0);
+  });
   let trayIcon = icon;
   if (process.platform === 'darwin') {
     trayIcon = nativeImage.createEmpty();

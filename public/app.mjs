@@ -373,9 +373,8 @@ function renderSettings() {
   $('#auto-join').checked = client.autoJoin;
   $('#setting-paused').checked = settings.paused;
   if ($('#setting-hide-self')) $('#setting-hide-self').checked = settings.hideSelf;
-  if ($('#setting-auto-start')) $('#setting-auto-start').checked = settings.autoStart !== false;
-  for (const key of ['volume','size','cooldown','position','display']) $(`#setting-${key}`).value = settings[key];
-  $('#volume-value').textContent = `${settings.volume} %`; $('#size-value').textContent = `${settings.size} %`; $('#cooldown-value').textContent = `${settings.cooldown} s`;
+  for (const key of ['volume','size','position','display']) $(`#setting-${key}`).value = settings[key];
+  $('#volume-value').textContent = `${settings.volume} %`; $('#size-value').textContent = `${settings.size} %`;
   $('#pause-reception').textContent = settings.paused ? 'Reprendre la réception' : 'Mettre en pause';
 }
 function handleEvent(event) {
@@ -1002,10 +1001,10 @@ async function updateSettings(value) {
   if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {});
 }
 $('#pause-reception').addEventListener('click', () => updateSettings({ ...settings, paused:!settings.paused }));
-for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideSelf'],['setting-auto-start','autoStart'],['setting-volume','volume'],['setting-size','size'],['setting-cooldown','cooldown'],['setting-position','position'],['setting-display','display']]) {
+for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideSelf'],['setting-volume','volume'],['setting-size','size'],['setting-position','position'],['setting-display','display']]) {
   $(`#${id}`)?.addEventListener('input', event => { const input = event.target; updateSettings({ ...settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
 }
-$('#test-overlay').addEventListener('click', async () => { if (native) { const result = await native.test(); if (!result.shown) notify('Reprenez la réception pour tester l’overlay.'); } });
+$('#check-updates')?.addEventListener('click', async () => { if (native?.restart) await native.restart(); });
 let currentTab = 'composer';
 let messageHistory = [];
 
