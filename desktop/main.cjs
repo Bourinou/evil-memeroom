@@ -622,34 +622,55 @@ if (singleInstance) app.whenReady().then(async () => {
       const execFileAsync = promisify(execFile);
 
       const duration = Math.max(0.1, end - start);
-      try {
-        await execFileAsync(ffmpegBin, [
-          '-y',
-          '-ss', String(start),
-          '-t', String(duration),
-          '-i', inputPath,
-          '-preset', 'veryfast',
-          outputPath
-        ], { windowsHide: true });
-      } catch (presetErr) {
+      let trimmed = false;
+
+      // Stream copy preserves per-frame dynamic resolution, aspect ratio animations,
+      // and alpha channels in WebM without re-encoding.
+      if (ext === '.webm') {
         try {
           await execFileAsync(ffmpegBin, [
             '-y',
             '-ss', String(start),
-            '-t', String(duration),
             '-i', inputPath,
-            outputPath
-          ], { windowsHide: true });
-        } catch (reencErr) {
-          await execFileAsync(ffmpegBin, [
-            '-y',
-            '-ss', String(start),
             '-t', String(duration),
-            '-i', inputPath,
             '-c', 'copy',
             '-avoid_negative_ts', 'make_zero',
             outputPath
           ], { windowsHide: true });
+          trimmed = true;
+        } catch (copyErr) {}
+      }
+
+      if (!trimmed) {
+        try {
+          await execFileAsync(ffmpegBin, [
+            '-y',
+            '-ss', String(start),
+            '-i', inputPath,
+            '-t', String(duration),
+            '-preset', 'veryfast',
+            outputPath
+          ], { windowsHide: true });
+        } catch (presetErr) {
+          try {
+            await execFileAsync(ffmpegBin, [
+              '-y',
+              '-ss', String(start),
+              '-i', inputPath,
+              '-t', String(duration),
+              outputPath
+            ], { windowsHide: true });
+          } catch (reencErr) {
+            await execFileAsync(ffmpegBin, [
+              '-y',
+              '-ss', String(start),
+              '-i', inputPath,
+              '-t', String(duration),
+              '-c', 'copy',
+              '-avoid_negative_ts', 'make_zero',
+              outputPath
+            ], { windowsHide: true });
+          }
         }
       }
 
