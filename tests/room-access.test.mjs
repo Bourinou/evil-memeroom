@@ -14,6 +14,12 @@ async function client(base) {
   ws.on('message', raw => { const message = JSON.parse(raw); const waiting = pending.get(message.replyTo); if (!waiting) { events.push(message); return; } pending.delete(message.replyTo); clearTimeout(waiting.timer); message.ok ? waiting.resolve(message.data) : waiting.reject(Object.assign(new Error(message.error), { code: message.code })); });
   return { ws, events, request(type, data = {}) { const id = String(++sequence); return new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Test request timed out')), 4000); pending.set(id, { resolve, reject, timer }); ws.send(JSON.stringify({ id, type, data })); }); } };
 }
+async function clientFrom(base, ip) {
+  const ws = new WebSocket(base.replace('http:', 'ws:') + '/ws', { headers: { 'X-Forwarded-For': ip } }); await once(ws, 'open');
+  const pending = new Map();
+  ws.on('message', raw => { const message = JSON.parse(raw); const waiting = pending.get(message.replyTo); if (!waiting) return; pending.delete(message.replyTo); message.ok ? waiting.resolve(message.data) : waiting.reject(Object.assign(new Error(message.error), { code: message.code })); });
+  return { ws, request(type, data = {}) { const id = String(++sequence); return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, type, data })); }); } };
+}
 async function fixture(t, options = {}) {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'memeroom-access-'));
   const server = createRoomServer({ host: '127.0.0.1', port: 0, dataDir, ...options });
@@ -92,4 +98,20 @@ test('room protection limits guessing and rejects oversized passwords', async t 
   for (let i = 0; i < 5; i++) await assert.rejects(guest.request('join', { name: 'Bob', code: room.code }), { code: 'ROOM_PASSWORD_REQUIRED' });
   await assert.rejects(guest.request('join', { name: 'Bob', code: room.code, password: 'guess' }), /Trop de mots de passe/);
   assert.equal((await owner.request('join', { name: 'Alice', code: room.code, ownerToken: room.ownerToken })).access.canManage, true);
+});
+test('wrong passwords from several addresses never lock the room for another address', async t => {
+  const f = await fixture(t, { trustProxy: true }), owner = await client(f.base);
+  const room = await owner.request('create', { name: 'Alice', password: 'actual password' });
+  for (const ip of ['10.0.0.1', '10.0.0.2', '10.0.0.3', '10.0.0.4']) {
+    const guest = await clientFrom(f.base, ip);
+    for (let i = 0; i < 4; i++) await assert.rejects(guest.request('join', { name: 'Bob', code: room.code, password: 'guess' }), { code: 'ROOM_PASSWORD_REQUIRED' });
+  }
+  const friend = await clientFrom(f.base, '10.0.0.9');
+  assert.equal((await friend.request('join', { name: 'Chloé', code: room.code, password: 'actual password' })).code, room.code);
+});
+test('a verification that could not run does not consume a password attempt', async t => {
+  const f = await fixture(t, { trustProxy: true }), owner = await client(f.base), guest = await clientFrom(f.base, '10.0.0.5');
+  const room = await owner.request('create', { name: 'Alice', password: 'actual password' });
+  for (let i = 0; i < 10; i++) await assert.rejects(guest.request('join', { name: 'Bob', code: room.code, password: 'x'.repeat(129) }), /128/);
+  assert.equal((await guest.request('join', { name: 'Bob', code: room.code, password: 'actual password' })).code, room.code);
 });

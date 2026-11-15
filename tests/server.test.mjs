@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { WebSocket } from 'ws';
 import { createRoomServer } from '../server/index.mjs';
+import { makeMediaSpace } from '../server/media-capacity.mjs';
 let sequence=0;
 async function client(base){
   const ws=new WebSocket(base.replace('http:','ws:')+'/ws');await once(ws,'open');
@@ -80,4 +81,26 @@ test('creation reports storage failures and does not acknowledge an unsaved room
   const server=createRoomServer({host:'127.0.0.1',port:0,dataDir});t.after(()=>server.stop());const address=await server.start();
   await writeFile(dataDir,'blocking file');const a=await client(`http://127.0.0.1:${address.port}`);
   await assert.rejects(a.request('create',{name:'Alice'}),/enregistrer/);
+});
+test('history keeps subtitles and custom duration for reconnecting clients',async t=>{
+  const base=await fixture(t,{cooldownMs:0});const a=await client(base);const room=await a.request('create',{name:'Alice'});
+  await a.request('broadcast',{caption:'Salut',duration:5,customDuration:true,subtitles:[{start:0,end:1,text:'hello'}]});await pause(25);
+  const reaction=a.events.find(e=>e.type==='reaction');a.ws.close();await once(a.ws,'close');
+  const item=(await (await client(base)).request('join',{name:'Alice',code:room.code})).history[0];
+  assert.ok(item.subtitles.some(c=>c.text==='hello'));assert.deepEqual(item.subtitles,reaction.subtitles);assert.deepEqual(item.cues,item.subtitles);
+  assert.equal(item.customDuration,reaction.customDuration);assert.equal(item.duration,reaction.duration);
+});
+test('unexpected upload errors are 500s and full storage carries an explicit status',async t=>{
+  t.mock.method(console,'error',()=>{});
+  const base=await fixture(t,{scanMedia:async()=>{throw new Error('boom');}});const a=await client(base);const room=await a.request('create',{name:'Alice'});
+  const buffer=await readFile(new URL('../public/icon.png',import.meta.url));
+  const response=await fetch(base+'/api/media',{method:'POST',headers:{Authorization:`Bearer ${room.token}`,'X-Filename':'a.png'},body:buffer});
+  assert.equal(response.status,500);assert.doesNotMatch((await response.json()).error,/boom/);
+  const limits={roomBytes:10,totalBytes:10,mediaCount:5};
+  assert.throws(()=>makeMediaSpace({media:new Map(),bytes:0},new Map(),new Map(),11,0,limits),{status:413});
+  assert.throws(()=>makeMediaSpace({media:new Map(),bytes:5},new Map(),new Map(),8,5,limits),{status:507});
+});
+test('health reports the version from package.json',async t=>{
+  const base=await fixture(t);const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
+  assert.equal((await (await fetch(base+'/api/health')).json()).version,pkg.version);
 });

@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -16,6 +16,8 @@ import { listDownloads, serveRelease, parseByteRange } from './releases.mjs';
 import { secret, digest, hashPassword, verifyPassword, isOwner, issueJoinToken, validJoinToken, accessInfo, passwordError } from './room-access.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+let appVersion = 'unknown';
+try { appVersion = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version || appVersion; } catch { /* Keep the placeholder when package.json is unreadable. */ }
 const staticFiles = new Map([
   ['/', ['public/downloads.html', 'text/html; charset=utf-8']],
   ['/telecharger', ['public/downloads.html', 'text/html; charset=utf-8']],
@@ -45,7 +47,7 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
   const rooms = new Map(), sessions = new Map(), media = new Map(), ipBudgets = new Map();
   const store = new RoomStore(dataDir);
   const storage = new MediaStorage(), passwordLimiter = new PasswordLimiter();
-  const makeRoom = (code, name, access = {}) => ({ code, name, isPrivate: true, passwordHash: null, ownerHash: null, accessKey: secret(), ...access, members: new Map(), media: new Map(), bytes: 0, history: [], revision: 0, failedPasswords: { start: Date.now(), count: 0 }, lastActive: Date.now(), lastBroadcast: 0 });
+  const makeRoom = (code, name, access = {}) => ({ code, name, isPrivate: true, passwordHash: null, ownerHash: null, accessKey: secret(), ...access, members: new Map(), media: new Map(), bytes: 0, history: [], revision: 0, lastActive: Date.now(), lastBroadcast: 0 });
   let totalBytes = 0, uploads = 0;
   function removeMedia(asset) {
     if (!media.delete(asset.id)) return;
@@ -92,7 +94,7 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
     let url;
     try { url = new URL(req.url, 'http://localhost'); } catch { json(res, 400, { error: 'URL invalide.' }); return; }
     try {
-      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'memeroom', version: '0.6.6', persistentRooms: !!dataDir, features: { roomAccess: true, roomDirectory: true, mediaEviction: true, mediaExpiry: true, largeUploads: true, antivirusRequired: process.env.MEMEROOM_SCAN_REQUIRED === '1' || !!process.env.CLAMAV_HOST } }); return; }
+      if (req.method === 'GET' && url.pathname === '/api/health') { json(res, 200, { app: 'memeroom', version: appVersion, persistentRooms: !!dataDir, features: { roomAccess: true, roomDirectory: true, mediaEviction: true, mediaExpiry: true, largeUploads: true, antivirusRequired: process.env.MEMEROOM_SCAN_REQUIRED === '1' || !!process.env.CLAMAV_HOST } }); return; }
       if (req.method === 'GET' && url.pathname === '/api/rooms') {
         if (limited(clientIP(req, trustProxy))) { json(res, 429, { error: 'Trop de demandes. Patientez une minute.' }); return; }
         json(res, 200, { rooms: [...rooms.values()].filter(room => !room.isPrivate).map(room => ({ code: room.code, name: room.name, members: room.members.size, passwordRequired: !!room.passwordHash })).sort((a, b) => a.name.localeCompare(b.name, 'fr')) }); return;
@@ -150,7 +152,10 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
         }
       }
       json(res, 404, { error: 'Page introuvable.' });
-    } catch (error) { if (!res.headersSent && !res.destroyed) json(res, error.status || 400, { error: error.status ? error.message : 'Impossible de traiter la requête.' }); }
+    } catch (error) {
+      if (!error.status) console.error('Unexpected request error:', error);
+      if (!res.headersSent && !res.destroyed) json(res, error.status || 500, { error: error.status ? error.message : 'Erreur interne du serveur.' });
+    }
   });
   server.requestTimeout = LIMITS.transferTimeoutMs; server.headersTimeout = 10000;
   const wss = new WebSocketServer({ noServer: true, maxPayload: 48 * 1024, perMessageDeflate: false });
@@ -203,12 +208,12 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
             if (!room) throw new Error('Cette room est introuvable. Vérifiez le code et le serveur.');
             const accessKey = room.accessKey;
             if (room.passwordHash && !isOwner(room, body.ownerToken) && !validJoinToken(room, body.joinToken)) {
-              const passwordSucceeded = passwordLimiter.consume(clientIP(req, trustProxy), code);
-              if (Date.now() - room.failedPasswords.start > 60000) room.failedPasswords = { start: Date.now(), count: 0 };
-              if (room.failedPasswords.count >= 12) throw new Error('Trop de mots de passe incorrects. Réessayez dans une minute.');
-              const budget = room.failedPasswords; budget.count++;
-              if (!await verifyPassword(body.password, room.passwordHash)) throw passwordError();
-              budget.count--; passwordSucceeded();
+              const refund = passwordLimiter.consume(clientIP(req, trustProxy), code);
+              let valid;
+              try { valid = await verifyPassword(body.password, room.passwordHash); }
+              catch (error) { refund(); throw error; } // Busy/invalid input is not a wrong guess.
+              if (!valid) throw passwordError();
+              refund();
             }
             if (ws.readyState !== WebSocket.OPEN) return;
             if (room.accessKey !== accessKey || rooms.get(code) !== room) throw passwordError();
@@ -248,19 +253,19 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
           if (changed) {
             for (const other of [...room.members.values()]) if (other !== member) { send(other.ws, { type: 'access-changed' }); leave(other.ws); other.ws.close(1008, 'Accès modifié'); }
             for (const asset of room.media.values()) removeMedia(asset);
-            room.media.clear(); room.bytes = 0; room.history = []; room.failedPasswords = { start: Date.now(), count: 0 };
+            room.media.clear(); room.bytes = 0; room.history = [];
             emit(room, { type: 'library', media: [] });
           }
           for (const current of room.members.values()) send(current.ws, { type: 'room-access', access: accessInfo(room, current.owner) });
           reply({ access: accessInfo(room, true), joinToken: issueJoinToken(room), ...(ownerToken ? { ownerToken } : {}) }); return;
         }
         if (message.type === 'broadcast') {
-          if (now - room.lastBroadcast < cooldownMs) throw new Error('Une réaction vient de partir. Patientez 3 secondes.');
+          if (now - room.lastBroadcast < cooldownMs) throw new Error('Une réaction vient de partir. Patientez quelques secondes.');
           for (const id of [body.mediaId, body.audioId]) if (id && room.media.get(id)?.expiresAt <= Date.now()) throw new Error('Ce fichier a expiré. Importez-le à nouveau ou chargez un message enregistré.');
           const reaction = validateReaction(body, room.media);
           const event = { ...reaction, id: randomUUID(), sender: { id: member.id, name: member.name }, sentAt: now, startAt: now + 350, type: 'reaction' };
           room.lastBroadcast = now; room.lastActive = now;
-          room.history.unshift({ id: event.id, name: event.name, sender: member.name, sentAt: now, kind: event.media?.kind || (event.audio ? 'audio' : 'text'), caption: event.caption || '', media: event.media || null, audio: event.audio || null, cues: event.cues || [], duration: event.duration });
+          room.history.unshift({ id: event.id, name: event.name, sender: member.name, sentAt: now, kind: event.media?.kind || (event.audio ? 'audio' : 'text'), caption: event.caption || '', media: event.media || null, audio: event.audio || null, subtitles: event.subtitles || [], cues: event.subtitles || [], duration: event.duration, ...(event.customDuration ? { customDuration: true } : {}) });
           room.history.length = Math.min(room.history.length, 50);
           emit(room, event); reply({ id: event.id }); return;
         }
