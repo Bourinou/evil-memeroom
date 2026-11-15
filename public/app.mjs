@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch, getGifDuration, embedReactionMeta, extractReactionMeta, applyReactionMeta } from './shared/protocol.mjs';
+import { DEFAULT_SETTINGS, cleanSettings, cleanClientState, normalizeServer, parseSubtitles, hasTimedMedia, validDismissShortcut, LIMITS, normalizeSearch, getGifDuration, embedReactionMeta, applyReactionMeta } from './shared/protocol.mjs';
 import { Connection } from './connection.mjs';
 import { mountReaction } from './media-view.mjs';
 
@@ -78,7 +78,7 @@ const DEFAULT_SERVER = 'https://memeroom.tonamielarose.fr/';
 const resolveServer = ref => ref === 'local' ? localServer : ref;
 function referenceFor(url) {
   const parsed = new URL(url), local = new URL(localServer);
-  return native && parsed.port === local.port && ['127.0.0.1','localhost','[::1]'].includes(parsed.hostname) ? 'local' : url;
+  return parsed.port === local.port && ['127.0.0.1','localhost','[::1]'].includes(parsed.hostname) ? 'local' : url;
 }
 function notify(message, error = false) {
   const toast = $('#toast'); toast.textContent = message; toast.classList.toggle('error', error); toast.hidden = false;
@@ -87,8 +87,7 @@ function notify(message, error = false) {
 async function saveClient() {
   client = cleanClientState(client);
   try {
-    if (native) await native.saveClient(client);
-    else localStorage.setItem(storageKey, JSON.stringify(client));
+    await native.saveClient(client);
   } catch { notify('Impossible d’enregistrer les rooms sur cet appareil.', true); return false; }
   return true;
 }
@@ -432,7 +431,7 @@ function handleEvent(event) {
     }
     const isSelf = (room?.memberId && event.sender?.id === room.memberId) || (client?.nickname && event.sender?.name === client.nickname);
     if (isSelf && settings.hideSelf) return;
-    if (native && !settings.paused) {
+    if (!settings.paused) {
       const now = Date.now() + connection.skew;
       native.show({ ...event, server: resolveServer(target.server), delay: Math.max(0, event.startAt - now), age: Math.max(0, now - event.startAt) }).catch(error => notify(error.message, true));
     }
@@ -443,7 +442,7 @@ function disconnect() {
   connected = false; connecting = false; library = []; visual = null; audio = null; cues = []; retries = 0;
   if ($('#custom-duration-toggle')) $('#custom-duration-toggle').checked = false;
   updateHistoryBadge(); if (currentTab === 'history') renderHistory();
-  native?.clear(); status = 'Aucune room sélectionnée.'; renderRooms(); renderAttachments(); renderLibrary(); renderSubtitles();
+  native.clear(); status = 'Aucune room sélectionnée.'; renderRooms(); renderAttachments(); renderLibrary(); renderSubtitles();
   $('#password-dialog').close(); $('#access-dialog').close();
 }
 function scheduleRetry(currentEpoch) {
@@ -457,7 +456,7 @@ async function attemptJoin(currentEpoch, create) {
   connecting = true; connection?.close();
   const current = new Connection(resolveServer(target.server), event => { if (current === connection) handleEvent(event); }, () => {
     if (current !== connection || currentEpoch !== epoch) return;
-    connected = false; room = null; native?.clear(); renderRooms();
+    connected = false; room = null; native.clear(); renderRooms();
     if (!connecting) scheduleRetry(currentEpoch);
   });
   connection = current;
@@ -468,7 +467,7 @@ async function attemptJoin(currentEpoch, create) {
       if (!health.ok || !(await health.json()).features?.roomAccess) throw new Error('Mettez le serveur à jour en 0.4.0 pour créer une room avec ces accès.');
     }
     if (currentEpoch !== epoch) return;
-    const data = await current.request(create ? 'create' : 'join', { name: client.nickname, roomName: target.name, code: target.code, desktop: !!native, paused: settings.paused, isPrivate: target.isPrivate, password: target.password, joinToken: target.joinToken, ownerToken: target.ownerToken });
+    const data = await current.request(create ? 'create' : 'join', { name: client.nickname, roomName: target.name, code: target.code, desktop: true, paused: settings.paused, isPrivate: target.isPrivate, password: target.password, joinToken: target.joinToken, ownerToken: target.ownerToken });
     if (currentEpoch !== epoch) return;
     target = { code: data.code, name: data.name, server: target.server, joinToken: data.joinToken, ownerToken: data.ownerToken || target.ownerToken };
     room = data; connected = true; connecting = false; retries = 0; clearTimeout(retryTimer);
@@ -716,66 +715,14 @@ function createSilentWavBlob(seconds) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-function encodeAudioBufferToWav(audioBuffer) {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
-  const bitsPerSample = 16;
-  const bytesPerSample = bitsPerSample / 8;
-  const blockAlign = numChannels * bytesPerSample;
-  const byteRate = sampleRate * blockAlign;
-  const samples = audioBuffer.length;
-  const dataSize = samples * blockAlign;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  function writeString(offset, string) {
-    for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
-  }
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-  let offset = 44;
-  for (let i = 0; i < samples; i++) {
-    for (let ch = 0; ch < numChannels; ch++) {
-      const s = Math.max(-1, Math.min(1, audioBuffer.getChannelData(ch)[i]));
-      const val = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      view.setInt16(offset, val, true);
-      offset += 2;
-    }
-  }
-  return new Blob([buffer], { type: 'audio/wav' });
-}
-
 async function extractAudioFromFileOrBuffer(name, arrayBuffer) {
-  if (native?.extractAudio) {
-    const result = await native.extractAudio({
-      name,
-      buffer: new Uint8Array(arrayBuffer)
-    });
-    const mime = result.mime || (result.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
-    const blob = new Blob([result.buffer], { type: mime });
-    return new File([blob], result.name, { type: mime });
-  }
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  try {
-    const audioBuf = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
-    const wavBlob = encodeAudioBufferToWav(audioBuf);
-    const baseName = (name || 'audio').replace(/\.[^.]+$/, '');
-    return new File([wavBlob], `${baseName}.wav`, { type: 'audio/wav' });
-  } catch {
-    throw new Error('Cette vidéo ne contient pas de piste audio exploitable.');
-  } finally {
-    audioCtx.close().catch(() => {});
-  }
+  const result = await native.extractAudio({
+    name,
+    buffer: new Uint8Array(arrayBuffer)
+  });
+  const mime = result.mime || (result.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
+  const blob = new Blob([result.buffer], { type: mime });
+  return new File([blob], result.name, { type: mime });
 }
 
 async function uploadMedia(file, currentEpoch, currentRoom) {
@@ -961,7 +908,7 @@ $('#open-settings').addEventListener('click', () => { renderSettings(); renderRo
 $('#auto-join').addEventListener('change', async event => { client.autoJoin = event.target.checked; await saveClient(); });
 async function stopShortcutCapture() {
   recordingShortcut = false; renderSettings();
-  if (native) await native.recordShortcut(false);
+  await native.recordShortcut(false);
 }
 async function saveDismissShortcut(value) {
   shortcutBusy = true;
@@ -997,14 +944,14 @@ document.addEventListener('keydown', event => {
 }, true);
 async function updateSettings(value) {
   const pauseChanged = settings.paused !== value.paused; settings = cleanSettings(value); renderSettings();
-  if (native) try { await native.saveSettings(settings); } catch { notify('Impossible d’enregistrer les réglages.', true); }
+  try { await native.saveSettings(settings); } catch { notify('Impossible d’enregistrer les réglages.', true); }
   if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {});
 }
 $('#pause-reception').addEventListener('click', () => updateSettings({ ...settings, paused:!settings.paused }));
 for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideSelf'],['setting-volume','volume'],['setting-size','size'],['setting-position','position'],['setting-display','display']]) {
   $(`#${id}`)?.addEventListener('input', event => { const input = event.target; updateSettings({ ...settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
 }
-$('#check-updates')?.addEventListener('click', async () => { if (native?.restart) await native.restart(); });
+$('#check-updates')?.addEventListener('click', async () => { await native.restart(); });
 let currentTab = 'composer';
 let messageHistory = [];
 
@@ -1033,9 +980,7 @@ function saveHistoryToStorage(list) {
   try {
     localStorage.setItem(historyStorageKey(), JSON.stringify(clean));
   } catch {}
-  if (native?.saveHistory) {
-    native.saveHistory(clean).catch(() => {});
-  }
+  native.saveHistory(clean).catch(() => {});
 }
 function updateHistoryBadge() {
   const countEl = $('#history-count');
@@ -1081,7 +1026,7 @@ async function insertHistoryItem(item) {
           }
         } catch {}
       }
-      if (!file && native?.readSavedMeme && item.media.name) {
+      if (!file && item.media.name) {
         try {
           const data = await native.readSavedMeme(item.media.name);
           const ext = item.media.name.slice(item.media.name.lastIndexOf('.')).toLowerCase();
@@ -1112,7 +1057,7 @@ async function insertHistoryItem(item) {
           }
         } catch {}
       }
-      if (!file && native?.readSavedMeme && item.audio.name) {
+      if (!file && item.audio.name) {
         try {
           const data = await native.readSavedMeme(item.audio.name);
           const ext = item.audio.name.slice(item.audio.name.lastIndexOf('.')).toLowerCase();
@@ -1276,7 +1221,6 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 async function loadSavedMemes() {
-  if (!native?.listSavedMemes) return;
   try {
     savedMemes = await native.listSavedMemes();
     renderSavedMemes();
@@ -1513,9 +1457,7 @@ $('#saved-sort')?.addEventListener('change', e => {
   renderSavedMemes();
 });
 $('#open-saved-folder')?.addEventListener('click', async () => {
-  if (native?.openSavedMemesFolder) {
-    try { await native.openSavedMemesFolder(); } catch (err) { notify(err.message, true); }
-  }
+  try { await native.openSavedMemesFolder(); } catch (err) { notify(err.message, true); }
 });
 let trimAsset = null, trimTarget = null;
 let trimTotalDuration = 0;
@@ -1738,43 +1680,18 @@ $('#trim-apply').addEventListener('click', async () => {
   applyBtn.textContent = 'Découpe en cours…';
   try {
     const mediaUrl = new URL(trimAsset.url, resolveServer(target.server)).href;
-    let trimmedFile;
-    if (native?.trimMedia) {
-      const resp = await fetch(mediaUrl);
-      const arrayBuf = await resp.arrayBuffer();
-      const trimmed = await native.trimMedia({
-        name: trimAsset.name,
-        buffer: new Uint8Array(arrayBuf),
-        start: trimStart,
-        end: trimEnd,
-        asAudio: trimTarget === 'audio'
-      });
-      const mime = trimmed.mime || (trimTarget === 'audio' ? (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg') : (trimAsset.mime || (trimAsset.kind === 'video' ? (trimmed.name.endsWith('.webm') ? 'video/webm' : 'video/mp4') : (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg'))));
-      const blob = new Blob([trimmed.buffer], { type: mime });
-      trimmedFile = new File([blob], trimmed.name, { type: mime });
-    } else if (trimAsset.kind === 'audio' || trimTarget === 'audio') {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      try {
-        const resp = await fetch(mediaUrl);
-        const arrayBuf = await resp.arrayBuffer();
-        const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
-        const sampleRate = audioBuf.sampleRate;
-        const startOffset = Math.floor(trimStart * sampleRate);
-        const endOffset = Math.floor(trimEnd * sampleRate);
-        const frameCount = Math.max(1, endOffset - startOffset);
-        const slicedBuf = audioCtx.createBuffer(audioBuf.numberOfChannels, frameCount, sampleRate);
-        for (let ch = 0; ch < audioBuf.numberOfChannels; ch++) {
-          const channelData = audioBuf.getChannelData(ch).subarray(startOffset, endOffset);
-          slicedBuf.copyToChannel(channelData, ch, 0);
-        }
-        const wavBlob = encodeAudioBufferToWav(slicedBuf);
-        trimmedFile = new File([wavBlob], `trim_${trimAsset.name.replace(/\.[^.]+$/, '')}.wav`, { type: 'audio/wav' });
-      } finally {
-        audioCtx.close().catch(() => {});
-      }
-    } else {
-      throw new Error('La découpe de vidéo nécessite l’application bureau.');
-    }
+    const resp = await fetch(mediaUrl);
+    const arrayBuf = await resp.arrayBuffer();
+    const trimmed = await native.trimMedia({
+      name: trimAsset.name,
+      buffer: new Uint8Array(arrayBuf),
+      start: trimStart,
+      end: trimEnd,
+      asAudio: trimTarget === 'audio'
+    });
+    const mime = trimmed.mime || (trimTarget === 'audio' ? (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg') : (trimAsset.mime || (trimAsset.kind === 'video' ? (trimmed.name.endsWith('.webm') ? 'video/webm' : 'video/mp4') : (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg'))));
+    const blob = new Blob([trimmed.buffer], { type: mime });
+    const trimmedFile = new File([blob], trimmed.name, { type: mime });
 
     if (trimmedFile.size > LIMITS.uploadBytes) throw new Error(`${trimmedFile.name} dépasse 1 Go.`);
     const uploaded = await uploadMedia(trimmedFile, epoch, room);
@@ -1801,27 +1718,25 @@ $('#trim-apply').addEventListener('click', async () => {
 
 async function init() {
   messageHistory = loadHistoryFromStorage();
-  if (native) {
-    const info = await native.info(); settings = info.settings; localServer = info.server; addresses = info.addresses;
-    mac = info.platform === 'darwin';
-    if (mac) $('#pause-shortcut-note').textContent = 'Pause rapide : Cmd + Maj + F8';
-    if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
-    client = cleanClientState(info.clientState || client);
-    if (Array.isArray(info.history) && info.history.length) {
-      const merged = [...messageHistory];
-      for (const item of info.history) {
-        if (!merged.some(m => m.id === item.id)) merged.push(item);
-      }
-      messageHistory = cleanHistory(merged);
-      saveHistoryToStorage(messageHistory);
+  const info = await native.info(); settings = info.settings; localServer = info.server; addresses = info.addresses;
+  mac = info.platform === 'darwin';
+  if (mac) $('#pause-shortcut-note').textContent = 'Pause rapide : Cmd + Maj + F8';
+  if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
+  client = cleanClientState(info.clientState || client);
+  if (Array.isArray(info.history) && info.history.length) {
+    const merged = [...messageHistory];
+    for (const item of info.history) {
+      if (!merged.some(m => m.id === item.id)) merged.push(item);
     }
-    for (const display of info.displays) $('#setting-display').add(new Option(display.label, display.id));
-    $('#pause-reception').hidden = false;
-    native.onSettings(value => { const pauseChanged = settings.paused !== value.paused; settings = value; renderSettings(); if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {}); });
-    native.onError(message => notify(message, true));
-    if (native.onSavedMemesUpdated) native.onSavedMemesUpdated(() => { void loadSavedMemes(); });
-    await loadSavedMemes();
-  } else $('#reception-settings').hidden = true;
+    messageHistory = cleanHistory(merged);
+    saveHistoryToStorage(messageHistory);
+  }
+  for (const display of info.displays) $('#setting-display').add(new Option(display.label, display.id));
+  $('#pause-reception').hidden = false;
+  native.onSettings(value => { const pauseChanged = settings.paused !== value.paused; settings = value; renderSettings(); if (pauseChanged && connected) connection.request('status', { paused:settings.paused }).catch(() => {}); });
+  native.onError(message => notify(message, true));
+  native.onSavedMemesUpdated(() => { void loadSavedMemes(); });
+  await loadSavedMemes();
   updateHistoryBadge();
   renderRooms(); renderSettings(); renderLibrary(); showTab(currentTab);
   if (client.autoJoin && client.active) {
