@@ -12,6 +12,14 @@ test('preferences always respect receiver limits',()=>{
   assert.equal(cleanSettings({autoStart:false}).autoStart,true);
   assert.equal(cleanSettings({position:'bottom-left'}).position,'bottom-left');
 });
+test('saveReceived defaults to true and keeps only an explicit false',()=>{
+  assert.equal(cleanSettings({}).saveReceived,true);
+  assert.equal(cleanSettings().saveReceived,true);
+  assert.equal(cleanSettings({saveReceived:false}).saveReceived,false);
+  assert.equal(cleanSettings({saveReceived:true}).saveReceived,true);
+  assert.equal(cleanSettings({saveReceived:'nope'}).saveReceived,true);
+  assert.equal(cleanSettings({saveReceived:0}).saveReceived,true);
+});
 test('SRT parsing preserves cues beyond 15 seconds and strips markup',()=>{
   const expected=[{start:1,end:3.5,text:'Salut\nles potes'},{start:20,end:22,text:'Suite'}];
   assert.deepEqual(parseSubtitles('1\r\n00:00:01,000 --> 00:00:03,500\r\n<b>Salut</b>\r\nles potes\r\n\r\n2\r\n00:00:20,000 --> 00:00:22,000\r\nSuite'),expected);

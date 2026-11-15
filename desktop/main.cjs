@@ -250,7 +250,7 @@ async function displayReaction(payload, test = false) {
         reaction[key].playbackURL = pathToFileURL(file).href;
         const assetName = reaction[key].name || `${key}_${reaction[key].id}`;
         const isSilentAudio = key === 'audio' && (assetName === 'silent_audio.wav' || assetName.startsWith('silent_'));
-        if (!isSilentAudio) {
+        if (settings.saveReceived !== false && !isSilentAudio) {
           try {
             const saveRes = await savedMemes.save(file, assetName);
             if (saveRes.saved && control && !control.isDestroyed()) {

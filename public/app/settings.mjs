@@ -47,6 +47,7 @@ export function renderSettings() {
   $('#auto-join').checked = state.client.autoJoin;
   $('#setting-paused').checked = settings.paused;
   if ($('#setting-hide-self')) $('#setting-hide-self').checked = settings.hideSelf;
+  if ($('#setting-save-received')) $('#setting-save-received').checked = settings.saveReceived;
   for (const key of ['volume','size','position','display']) $(`#setting-${key}`).value = settings[key];
   $('#volume-value').textContent = `${settings.volume} %`; $('#size-value').textContent = `${settings.size} %`;
   $('#pause-reception').textContent = settings.paused ? 'Reprendre la réception' : 'Mettre en pause';
@@ -95,7 +96,7 @@ async function updateSettings(value) {
   if (pauseChanged && state.connected) state.connection.request('status', { paused:state.settings.paused }).catch(() => {});
 }
 $('#pause-reception').addEventListener('click', () => updateSettings({ ...state.settings, paused:!state.settings.paused }));
-for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideSelf'],['setting-volume','volume'],['setting-size','size'],['setting-position','position'],['setting-display','display']]) {
+for (const [id, key] of [['setting-paused','paused'],['setting-hide-self','hideSelf'],['setting-save-received','saveReceived'],['setting-volume','volume'],['setting-size','size'],['setting-position','position'],['setting-display','display']]) {
   $(`#${id}`)?.addEventListener('input', event => { const input = event.target; updateSettings({ ...state.settings, [key]:input.type === 'checkbox' ? input.checked : input.type === 'range' ? Number(input.value) : input.value }); });
 }
 $('#check-updates')?.addEventListener('click', async () => { await native.restart(); });
