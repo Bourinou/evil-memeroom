@@ -60,7 +60,7 @@ $('#rename-form')?.addEventListener('submit', async e => {
   }
 });
 let savedTypeFilter = 'all';
-let savedSortMode = 'name-asc';
+let savedSortMode = 'date-desc';
 function renderSavedMemes() {
   $('#preset-count').textContent = String(savedMemes.length);
   const grid = $('#saved-memes-grid');
@@ -78,6 +78,10 @@ function renderSavedMemes() {
   }
   filtered = filtered.slice().sort((a, b) => {
     switch (savedSortMode) {
+      case 'date-desc':
+        return (b.mtime || 0) - (a.mtime || 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      case 'date-asc':
+        return (a.mtime || 0) - (b.mtime || 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
       case 'name-asc':
         return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
       case 'name-desc':
