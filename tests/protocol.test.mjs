@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSettings, cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch, getGifDuration, embedReactionMeta, extractReactionMeta, applyReactionMeta } from '../shared/protocol.mjs';
+import { LIMITS, cleanSettings,cleanClientState, parseSubtitles, validCues, validateReaction, normalizeServer, hasTimedMedia, normalizeSearch, getGifDuration, embedReactionMeta, extractReactionMeta, applyReactionMeta } from '../shared/protocol.mjs';
 import { detectMedia } from '../server/media.mjs';
+test('broadcast cooldown is 2 seconds',()=>{assert.equal(LIMITS.cooldownMs,2000);});
 test('preferences always respect receiver limits',()=>{
   const p=cleanSettings({size:99,volume:-12,cooldown:0,paused:'true',position:'evil',display:42});
   assert.equal(p.size,60);assert.equal(p.volume,0);assert.equal(p.cooldown,2);assert.equal(p.paused,false);assert.equal(p.position,'center');assert.equal(p.display,'primary');

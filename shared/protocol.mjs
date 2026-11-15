@@ -1,4 +1,4 @@
-export const LIMITS = Object.freeze({ uploadBytes: 1024 ** 3, roomBytes: 2 * 1024 ** 3, totalBytes: 8 * 1024 ** 3, mediaTtlMs: 10 * 60 * 1000, transferTimeoutMs: 30 * 60 * 1000, durationMin: 0.1, durationMax: 15, playbackStallMs: 30000, cooldownMs: 3000, members: 16, mediaCount: 30 });
+export const LIMITS = Object.freeze({ uploadBytes: 1024 ** 3, roomBytes: 2 * 1024 ** 3, totalBytes: 8 * 1024 ** 3, mediaTtlMs: 10 * 60 * 1000, transferTimeoutMs: 30 * 60 * 1000, durationMin: 0.1, durationMax: 15, playbackStallMs: 30000, cooldownMs: 2000, members: 16, mediaCount: 30 });
 export function hasTimedMedia(reaction) { return reaction.media?.kind === 'video' || reaction.media?.kind === 'audio' || reaction.audio?.kind === 'audio' || reaction.audio?.kind === 'video'; }
 export const DEFAULT_SETTINGS = Object.freeze({ paused: false, hideSelf: false, autoStart: true, volume: 45, size: 60, cooldown: 2, position: 'center', display: 'primary', dismissShortcut: 'Control+Shift+F9' });
 export function validDismissShortcut(value) {

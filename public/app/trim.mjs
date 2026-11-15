@@ -196,7 +196,11 @@ export function openTrimDialog(asset) {
 
   const onLoaded = () => {
     media.removeEventListener('loadedmetadata', onLoaded);
-    trimTotalDuration = media.duration || 5;
+    if (!Number.isFinite(media.duration) || media.duration <= 0) {
+      notify('Durée du média inconnue : découpe impossible.', true);
+      return;
+    }
+    trimTotalDuration = media.duration;
     trimStart = 0;
     trimEnd = trimTotalDuration;
     $('#trim-apply').disabled = false;

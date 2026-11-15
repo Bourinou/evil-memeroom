@@ -333,8 +333,8 @@ $('#send-form').addEventListener('submit', async event => {
       payload.customDuration = true;
     }
     await state.connection.request('broadcast', payload);
-    nextSend = Date.now() + 3000;
-    setTimeout(renderSend, 3050);
+    nextSend = Date.now() + LIMITS.cooldownMs;
+    setTimeout(renderSend, LIMITS.cooldownMs + 50);
     notify('Envoyé.');
   }
   catch (error) { notify(error.message, true); }
@@ -358,6 +358,7 @@ export function attach(asset, asAudio = false) {
 export async function uploadFiles(files, asAudio = false) {
   if (importing) return;
   if (!state.connected || !state.room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
+  if (files.length > 2) notify('2 fichiers maximum : seuls les 2 premiers sont ajoutés.');
   importing = true; renderSend(); const currentEpoch = state.epoch, currentRoom = state.room;
   try {
     for (let file of files.slice(0, 2)) {

@@ -95,7 +95,7 @@ function handleEvent(event) {
       updateHistoryBadge();
       if (state.currentTab === 'history') renderHistory();
     }
-    const isSelf = (state.room?.memberId && event.sender?.id === state.room.memberId) || (state.client?.nickname && event.sender?.name === state.client.nickname);
+    const isSelf = !!state.room?.memberId && event.sender?.id === state.room.memberId;
     if (isSelf && state.settings.hideSelf) return;
     if (!state.settings.paused) {
       const now = Date.now() + state.connection.skew;
@@ -130,7 +130,7 @@ export async function attemptJoin(currentEpoch, create) {
     await current.open();
     if (create) {
       const health = await fetch(`${resolveServer(state.target.server)}/api/health`, { signal: AbortSignal.timeout(6000) });
-      if (!health.ok || !(await health.json()).features?.roomAccess) throw new Error('Mettez le serveur à jour en 0.4.0 pour créer une room avec ces accès.');
+      if (!health.ok || !(await health.json()).features?.roomAccess) throw new Error('Mettez le serveur à jour pour créer une room avec ces accès.');
     }
     if (currentEpoch !== state.epoch) return;
     const data = await current.request(create ? 'create' : 'join', { name: state.client.nickname, roomName: state.target.name, code: state.target.code, desktop: true, paused: state.settings.paused, isPrivate: state.target.isPrivate, password: state.target.password, joinToken: state.target.joinToken, ownerToken: state.target.ownerToken });
@@ -232,7 +232,7 @@ async function loadDirectory() {
   try {
     const server = normalizeServer($('#server-url').value.trim());
     const response = await fetch(`${server}/api/rooms`, { signal: request.signal });
-    if (response.status === 404) throw new Error('Ce serveur doit être mis à jour en 0.4.0 pour afficher ses rooms.');
+    if (response.status === 404) throw new Error('Ce serveur doit être mis à jour pour afficher ses rooms.');
     if (!response.ok) throw new Error('Impossible de charger les rooms du serveur.');
     const data = await response.json(); if (!Array.isArray(data.rooms)) throw new Error('Réponse du serveur invalide.');
     if (request !== directoryRequest) return;
