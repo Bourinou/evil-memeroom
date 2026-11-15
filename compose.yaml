@@ -12,7 +12,7 @@ services:
     depends_on:
       clamav:
         # Media publication still requires a successful antivirus scan.
-        condition: service_started
+        condition: service_healthy
     expose:
       - "3210"
     volumes:
@@ -25,6 +25,13 @@ services:
     volumes:
       - clamav_data:/var/lib/clamav
       - ./deploy/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      # The _base image has no built-in healthcheck: ping clamd until its signatures are loaded.
+      test: ["CMD-SHELL", "echo PING | nc -w 2 127.0.0.1 3310 | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10m
     mem_limit: 4g
   caddy:
     image: caddy:2-alpine

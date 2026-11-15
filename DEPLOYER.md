@@ -4,7 +4,7 @@ Cette version modifie le serveur, la configuration Nginx et l’application. Rem
 
 ## Serveur existant avec Nginx sur l’hôte
 
-1. Décompresser `release/MemeRoom-0.6.0-Serveur.zip`. Transférer son contenu dans **le même dossier de déploiement** que la version actuelle, en conservant `.env` et les volumes. Garder provisoirement les anciens téléchargements dans `releases/` jusqu’au démarrage du nouveau serveur. Copier notamment `server/`, `shared/`, `public/`, le nouveau dossier `deploy/`, les fichiers Compose, `Dockerfile`, `package.json` et `package-lock.json`.
+1. Décompresser `release/MemeRoom-<version>-Serveur.zip` (nom produit par `npm run pack:server`). Transférer son contenu dans **le même dossier de déploiement** que la version actuelle, en conservant `.env` et les volumes. Garder provisoirement les anciens téléchargements dans `releases/` jusqu’au démarrage du nouveau serveur. Copier notamment `server/`, `shared/`, `public/`, le nouveau dossier `deploy/`, les fichiers Compose, `Dockerfile`, `package.json` et `package-lock.json`.
 2. Mettre à jour les blocs `location /` et `location = /ws` du site Nginx à partir de `nginx-location.conf.example`. Garder le domaine et les certificats HTTPS existants. Les changements nécessaires sont :
 
    ```nginx
@@ -26,7 +26,7 @@ Cette version modifie le serveur, la configuration Nginx et l’application. Rem
    ```
 
    Exécuter ces commandes **sur le serveur Linux**. Dans PowerShell Windows, utiliser `curl.exe` pour interroger l’adresse HTTPS ; `127.0.0.1` désignerait alors le PC Windows.
-4. MemeRoom démarre dès que le conteneur ClamAV est lancé, sans attendre que son moteur soit prêt. Le site, les rooms et les messages texte sont utilisables pendant son initialisation. Les imports de fichiers restent refusés tant que l’analyse antivirus ne peut pas réussir. Au premier démarrage, la base de signatures doit être téléchargée puis chargée en mémoire ; les signatures restent ensuite dans le volume `clamav_data`. Pour consulter sa progression :
+4. MemeRoom démarre une fois ClamAV sain (`condition: service_healthy`) : le healthcheck interroge `clamd` (PING) et tolère 10 minutes de démarrage (`start_period`). Ainsi, aucun import n’est refusé en 503 pendant l’initialisation. Au premier démarrage, la base de signatures doit être téléchargée puis chargée en mémoire, ce qui peut prendre plusieurs minutes ; les signatures restent ensuite dans le volume `clamav_data`. Pour consulter sa progression :
 
    ```bash
    docker compose -f compose.nginx.yaml logs --tail=50 clamav
@@ -39,7 +39,7 @@ Le fichier `compose.nginx.yaml` publie uniquement `127.0.0.1:3210`. Ne pas lance
 
 ### Si le démarrage reste bloqué sur ClamAV
 
-Dans une première archive 0.5.0, MemeRoom attendait `condition: service_healthy`. Le fichier Compose corrigé utilise `condition: service_started`. Remplacer uniquement `compose.nginx.yaml`, puis exécuter `docker compose -f compose.nginx.yaml up -d memeroom` dans le dossier existant. Aucune reconstruction de l’application n’est nécessaire. Le conteneur antivirus déjà en cours de chargement conserve sa configuration et ses données.
+MemeRoom attend que ClamAV soit sain (`service_healthy`). Au premier démarrage, le téléchargement des signatures peut dépasser quelques minutes : `docker compose -f compose.nginx.yaml ps` affiche alors ClamAV en `starting`, puis `healthy`. Ne pas supprimer ni recréer le conteneur pendant ce temps : il conserve sa configuration et ses données.
 
 Si ClamAV ne devient jamais sain, consulter ses logs et `docker stats --no-stream`. Un téléchargement initial, une limite imposée par le serveur de signatures, un manque de mémoire ou une erreur de configuration nécessitent des corrections différentes. Ne pas supprimer le volume `clamav_data` : cela imposerait de télécharger à nouveau sa base. Référence : [démarrage et mémoire de ClamAV Docker](https://docs.clamav.net/manual/Installing/Docker.html).
 
