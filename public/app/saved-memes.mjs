@@ -1,5 +1,5 @@
 import { normalizeSearch } from '../shared/protocol.mjs';
-import { $, native, node, state, notify } from './state.mjs';
+import { $, native, node, state, notify, renderInBatches, lazyVideo } from './state.mjs';
 import { importSavedMeme, showPreview } from './composer.mjs';
 import { savedMemeRenamed, savedMemeRemoved } from './history.mjs';
 import { showTab } from '../app.mjs';
@@ -103,10 +103,10 @@ function renderSavedMemes() {
     emptyMsg.style.gridColumn = '1 / -1';
     emptyMsg.style.padding = '30px 10px';
     emptyMsg.style.textAlign = 'center';
-    grid.append(emptyMsg);
+    renderInBatches(grid, [emptyMsg], message => message);
     return;
   }
-  for (const meme of filtered) {
+  renderInBatches(grid, filtered, meme => {
     const card = node('div', undefined, 'saved-meme-card');
     card.setAttribute('title', `${meme.name} (cliquer pour un aperçu)`);
     const thumbBox = node('div', undefined, 'saved-meme-thumb-box');
@@ -115,12 +115,12 @@ function renderSavedMemes() {
       img.src = meme.url;
       img.alt = meme.name;
       img.loading = 'lazy';
+      img.decoding = 'async';
       thumbBox.append(img);
     } else if (meme.kind === 'video') {
       const vid = node('video', undefined, 'saved-meme-thumb');
-      vid.src = `${meme.url}#t=0.001`;
       vid.muted = true;
-      vid.preload = 'metadata';
+      lazyVideo(vid, `${meme.url}#t=0.001`);
       thumbBox.append(vid);
       thumbBox.append(node('span', 'VID', 'saved-meme-badge'));
     } else if (meme.kind === 'audio') {
@@ -203,8 +203,8 @@ function renderSavedMemes() {
       };
       showPreview(reaction);
     });
-    grid.append(card);
-  }
+    return card;
+  });
 }
 let searchDebounceTimer;
 $('#saved-search')?.addEventListener('input', () => {

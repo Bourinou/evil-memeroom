@@ -1,6 +1,6 @@
 import { hasTimedMedia } from '../shared/protocol.mjs';
 import { mergeHistory, isInRoom, withRoom, savedFileName, setSavedName, renameSavedName, removeSavedName } from '../shared/history.mjs';
-import { $, native, node, state, notify, resolveServer, SAVED_MIME_TYPES } from './state.mjs';
+import { $, native, node, state, notify, resolveServer, SAVED_MIME_TYPES, renderInBatches, lazyVideo } from './state.mjs';
 import { attach, uploadFiles, renderAttachments, renderSend, renderSubtitles, showPreview } from './composer.mjs';
 import { showTab } from '../app.mjs';
 
@@ -162,11 +162,11 @@ export function renderHistory() {
     const emptyMsg = node('p', 'Aucun message dans l’historique pour le moment.', 'muted');
     emptyMsg.style.padding = '30px 10px';
     emptyMsg.style.textAlign = 'center';
-    container.append(emptyMsg);
+    renderInBatches(container, [emptyMsg], message => message);
     return;
   }
 
-  for (const item of visible) {
+  renderInBatches(container, visible, item => {
     const card = node('div', undefined, 'history-card');
 
     if (item.media || item.audio) {
@@ -176,6 +176,7 @@ export function renderHistory() {
         const img = node('img', undefined, 'history-thumb');
         img.alt = item.media.name || 'Image';
         img.loading = 'lazy';
+        img.decoding = 'async';
         let fallbackDone = false;
         img.onerror = () => {
           if (!fallbackDone && savedFileName(item.media)) {
@@ -193,7 +194,6 @@ export function renderHistory() {
       } else if (item.media?.kind === 'video') {
         const vid = node('video', undefined, 'history-thumb');
         vid.muted = true;
-        vid.preload = 'metadata';
         let vidFallbackDone = false;
         vid.onerror = () => {
           if (!vidFallbackDone && savedFileName(item.media)) {
@@ -206,7 +206,7 @@ export function renderHistory() {
             thumbBox.append(node('span', '🎬', 'history-icon'));
           }
         };
-        vid.src = item.media.url ? `${new URL(item.media.url, mediaBase).href}#t=0.001` : '';
+        lazyVideo(vid, item.media.url ? `${new URL(item.media.url, mediaBase).href}#t=0.001` : '');
         thumbBox.append(vid);
         thumbBox.append(node('span', 'VID', 'history-badge'));
       } else if (item.audio) {
@@ -263,8 +263,8 @@ export function renderHistory() {
     card.addEventListener('click', () => {
       showPreview({ ...item, server: item.server || resolveServer(state.target?.server || 'local') });
     });
-    container.append(card);
-  }
+    return card;
+  });
 }
 $('#clear-history')?.addEventListener('click', () => {
   const cleared = new Set(visibleHistory());

@@ -17,6 +17,30 @@ export const state = {
 };
 
 export const SAVED_MIME_TYPES = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.gif':'image/gif', '.webp':'image/webp', '.mp4':'video/mp4', '.webm':'video/webm', '.mp3':'audio/mpeg', '.wav':'audio/wav', '.ogg':'audio/ogg' };
+// Long lists are appended a few cards per frame, so opening a tab never blocks the page.
+// Starting a new render on the same container cancels the previous one.
+const batchRuns = new WeakMap();
+export function renderInBatches(container, items, build, size = 12) {
+  const run = {}; batchRuns.set(container, run);
+  let index = 0;
+  const step = () => {
+    if (batchRuns.get(container) !== run) return;
+    const fragment = document.createDocumentFragment();
+    for (const end = Math.min(index + size, items.length); index < end; index++) fragment.append(build(items[index]));
+    container.append(fragment);
+    if (index < items.length) requestAnimationFrame(step);
+  };
+  step();
+}
+// Video thumbnails only start loading once they come near the viewport.
+const videoObserver = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    videoObserver.unobserve(entry.target);
+    entry.target.src = entry.target.dataset.src;
+  }
+}, { rootMargin: '300px' });
+export function lazyVideo(video, src) { video.preload = 'metadata'; video.dataset.src = src; videoObserver.observe(video); }
 export const keyFor = value => value ? `${value.server}|${value.code}` : '';
 export const resolveServer = ref => ref === 'local' ? state.localServer : ref;
 export function referenceFor(url) {
