@@ -71,6 +71,18 @@ function bindDismissShortcut(value) {
   dismissShortcut = value; shortcutError = '';
 }
 const settingsPath = () => path.join(app.getPath('userData'), 'preferences.json');
+async function removeStaleTempDirs() {
+  const prefixes = ['evil-memeroom-playback-', 'evil-audio-', 'evil-trim-'];
+  const tmp = os.tmpdir();
+  try {
+    for (const name of await fs.readdir(tmp)) {
+      if (!prefixes.some(prefix => name.startsWith(prefix))) continue;
+      const target = path.join(tmp, name);
+      const stat = await fs.stat(target).catch(() => null);
+      if (stat && Date.now() - stat.mtimeMs > 24 * 3600 * 1000) await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+    }
+  } catch {}
+}
 const clientPath = () => path.join(app.getPath('userData'), 'saved-rooms.json');
 const historyPath = () => path.join(app.getPath('userData'), 'history.json');
 const trustedControl = event => control && event.sender === control.webContents && event.senderFrame === control.webContents.mainFrame && event.senderFrame.url === CONTROL_URL;
@@ -287,6 +299,7 @@ if (singleInstance) app.whenReady().then(async () => {
     }
     clientState = null;
   }
+  void removeStaleTempDirs();
   const { createRoomServer } = await import(pathToFileURL(path.join(__dirname, '../server/index.mjs')).href);
   const dataDir = path.join(app.getPath('userData'), 'server');
   localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: Number(process.env.MEMEROOM_PORT || 3210), dataDir });
@@ -300,15 +313,17 @@ if (singleInstance) app.whenReady().then(async () => {
       address = await localServer.start();
     } else {
       const serverRoomsPath = path.join(dataDir, 'rooms.json');
+      // Invalid syntax (unreadable) or invalid content (server throws a plain Error without a system code).
       let corrupt = false;
       try {
         JSON.parse(await fs.readFile(serverRoomsPath, 'utf8'));
+        corrupt = !error.code;
       } catch (err) {
         if (err.code !== 'ENOENT') corrupt = true;
       }
       if (corrupt) {
-        console.warn('Fichier server/rooms.json corrompu, réinitialisation à zéro :', error.message);
-        await fs.rm(serverRoomsPath, { force: true }).catch(() => {});
+        console.warn('Fichier server/rooms.json corrompu ou invalide, mis de côté :', error.message);
+        await fs.rename(serverRoomsPath, `${serverRoomsPath}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`);
         localServer = createRoomServer({ host: process.env.HOST || '0.0.0.0', port: Number(process.env.MEMEROOM_PORT || 3210), dataDir });
         address = await localServer.start();
       } else {
@@ -400,8 +415,16 @@ if (singleInstance) app.whenReady().then(async () => {
   tray = new Tray(trayIcon); tray.on('click', () => { control.show(); control.focus(); }); tray.on('double-click', () => { control.show(); control.focus(); }); updateTray();
   control.on('close', event => { if (!quitting) { event.preventDefault(); if (process.platform === 'linux') control.minimize(); else control.hide(); } });
   control.on('blur', finishShortcutCapture);
-  control.webContents.on('render-process-gone', () => { finishShortcutCapture(); clearOverlay(); control.reload(); });
-  overlay.webContents.on('render-process-gone', () => { clearOverlay(); overlay.reload(); });
+  const reloadStamps = new Map();
+  const reloadLimited = target => {
+    const now = Date.now();
+    const recent = (reloadStamps.get(target) || []).filter(stamp => now - stamp < 60000);
+    if (recent.length >= 3) { reloadStamps.set(target, recent); return; }
+    reloadStamps.set(target, [...recent, now]);
+    if (!target.isDestroyed()) target.reload();
+  };
+  control.webContents.on('render-process-gone', () => { finishShortcutCapture(); clearOverlay(); reloadLimited(control); });
+  overlay.webContents.on('render-process-gone', () => { clearOverlay(); reloadLimited(overlay); });
   globalShortcut.register('CommandOrControl+Shift+F8', () => saveSettings({ ...settings, paused: !settings.paused }).catch(() => {}));
   try { bindDismissShortcut(settings.dismissShortcut); } catch (error) { shortcutError = error.message; }
   screen.on('display-removed', clearOverlay);
@@ -425,5 +448,13 @@ app.on('second-instance', () => {
   }
 });
 app.on('activate', () => { if (control && !control.isDestroyed()) { if (control.isMinimized()) control.restore(); control.show(); control.focus(); } });
-app.on('before-quit', () => { quitting = true; clearOverlay(); globalShortcut.unregisterAll(); if (localServer) void localServer.stop(); });
+let serverStopped = false;
+app.on('before-quit', event => {
+  quitting = true; clearOverlay(); globalShortcut.unregisterAll();
+  if (!localServer || serverStopped) return;
+  // Wait (2 s max) so the server removes its temp media directories before the process exits.
+  event.preventDefault();
+  serverStopped = true;
+  Promise.race([localServer.stop().catch(() => {}), new Promise(resolve => setTimeout(resolve, 2000))]).finally(() => app.quit());
+});
 app.on('window-all-closed', () => app.quit());
