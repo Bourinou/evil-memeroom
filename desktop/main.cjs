@@ -20,14 +20,12 @@ if (
 
 const path = require('node:path');
 const fs = require('node:fs/promises');
-const fsSync = require('node:fs');
-const { createReadStream } = fsSync;
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
-const crypto = require('node:crypto');
 const { CONTROL_URL, installControlPage } = require('./control-page.cjs');
 const { downloadAsset } = require('./media-files.cjs');
-const { Presets } = require('./presets.cjs');
+const { createSavedMemes } = require('./saved-memes.cjs');
+const { createMediaTools } = require('./media-tools.cjs');
 const { createOverlayLayer } = require('./overlay-layer.cjs');
 const {
   migrateMemesDir,
@@ -40,148 +38,8 @@ migrateMemesDir();
 const MEMEROOM_DIR = path.join(os.homedir(), 'evil-memeroom');
 fs.mkdir(MEMEROOM_DIR, { recursive: true }).catch(() => {});
 
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
-const VIDEO_EXTS = new Set(['.mp4', '.webm']);
-const AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg']);
-
-const hashCachePath = () => path.join(app.getPath('userData'), 'hashes.json');
-const memeHashCache = new Map(); // filename -> { size, mtime, hash }
-const hashToFilename = new Map(); // hash -> filename
-let hashCacheLoaded = false;
-
-async function loadHashCache() {
-  if (hashCacheLoaded) return;
-  try {
-    const raw = await fs.readFile(hashCachePath(), 'utf8');
-    const data = JSON.parse(raw);
-    for (const [filename, info] of Object.entries(data)) {
-      if (info && info.hash) {
-        memeHashCache.set(filename, info);
-        hashToFilename.set(info.hash, filename);
-      }
-    }
-  } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      await fs.rm(hashCachePath(), { force: true }).catch(() => {});
-    }
-  }
-  hashCacheLoaded = true;
-}
-
-let savingHashCache = Promise.resolve();
-function persistHashCache() {
-  const data = {};
-  for (const [filename, info] of memeHashCache) {
-    data[filename] = info;
-  }
-  const snapshot = JSON.stringify(data, null, 2);
-  savingHashCache = savingHashCache.catch(() => {}).then(async () => {
-    try {
-      await fs.mkdir(path.dirname(hashCachePath()), { recursive: true });
-      await fs.writeFile(hashCachePath() + '.tmp', snapshot, 'utf8');
-      await fs.rename(hashCachePath() + '.tmp', hashCachePath());
-    } catch {}
-  });
-}
-
-// Low-RAM streaming hash function (64 KB chunks, only 0.06 MB RAM)
-async function hashFileStream(filePath) {
-  const hash = crypto.createHash('sha256');
-  const stream = createReadStream(filePath, { highWaterMark: 64 * 1024 });
-  for await (const chunk of stream) {
-    hash.update(chunk);
-  }
-  return hash.digest('hex');
-}
-
-// Sync in-memory hash cache with ~/memeroom directory:
-// Only hashes new or modified files. Existing files are NEVER re-hashed!
-async function syncHashCache() {
-  await loadHashCache();
-  await fs.mkdir(MEMEROOM_DIR, { recursive: true });
-  const entries = await fs.readdir(MEMEROOM_DIR, { withFileTypes: true });
-  const presentFiles = new Set();
-  let modified = false;
-
-  for (const entry of entries) {
-    if (!entry.isFile() || entry.name.startsWith('.')) continue;
-    presentFiles.add(entry.name);
-    try {
-      const fullPath = path.join(MEMEROOM_DIR, entry.name);
-      const stat = await fs.stat(fullPath);
-      const cached = memeHashCache.get(entry.name);
-      if (!cached || cached.size !== stat.size || cached.mtime !== stat.mtimeMs) {
-        const hash = await hashFileStream(fullPath);
-        memeHashCache.set(entry.name, { size: stat.size, mtime: stat.mtimeMs, hash });
-        hashToFilename.set(hash, entry.name);
-        modified = true;
-      }
-    } catch {}
-  }
-
-  // Remove entries for deleted files
-  for (const [filename, info] of memeHashCache) {
-    if (!presentFiles.has(filename)) {
-      memeHashCache.delete(filename);
-      if (hashToFilename.get(info.hash) === filename) {
-        hashToFilename.delete(info.hash);
-      }
-      modified = true;
-    }
-  }
-
-  if (modified) persistHashCache();
-}
-
-function sanitizeMemeFilename(name) {
-  const base = String(name || '').split(/[/\\]/).pop() || '';
-  return base
-    .replace(/[<>:"/\\|?*\x00-\x1f]/gu, '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/\s+\./g, '.');
-}
-
-async function saveMemeAsset(sourceFile, originalName, kind) {
-  await syncHashCache();
-  const sourceStat = await fs.stat(sourceFile);
-  if (!sourceStat.isFile() || sourceStat.size === 0) return null;
-
-  // Stream-hash incoming file in 64 KB chunks
-  const sourceHash = await hashFileStream(sourceFile);
-
-  // O(1) in-memory lookup without touching any existing files on disk!
-  if (hashToFilename.has(sourceHash)) {
-    const existingName = hashToFilename.get(sourceHash);
-    try {
-      await fs.access(path.join(MEMEROOM_DIR, existingName));
-      return { saved: false, reason: 'duplicate', name: existingName };
-    } catch {
-      hashToFilename.delete(sourceHash);
-      memeHashCache.delete(existingName);
-    }
-  }
-
-  const cleanBase = sanitizeMemeFilename(originalName) || `meme_${Date.now()}`;
-  const parsed = path.parse(cleanBase);
-  let finalName = cleanBase;
-  let counter = 1;
-  const entries = await fs.readdir(MEMEROOM_DIR);
-  while (entries.some(e => e.toLowerCase() === finalName.toLowerCase())) {
-    finalName = `${parsed.name} ${counter}${parsed.ext}`;
-    counter++;
-  }
-
-  const destPath = path.join(MEMEROOM_DIR, finalName);
-  await fs.copyFile(sourceFile, destPath);
-  const destStat = await fs.stat(destPath);
-
-  memeHashCache.set(finalName, { size: destStat.size, mtime: destStat.mtimeMs, hash: sourceHash });
-  hashToFilename.set(sourceHash, finalName);
-  persistHashCache();
-
-  return { saved: true, name: finalName };
-}
+const savedMemes = createSavedMemes({ memesDir: MEMEROOM_DIR, hashCachePath: () => path.join(app.getPath('userData'), 'hashes.json') });
+const mediaTools = createMediaTools({ isPackaged: app.isPackaged });
 
 // Overlay placement and always-on-top windows require X11, including through XWayland.
 if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
@@ -202,7 +60,7 @@ if (!singleInstance) {
 let control, overlay, tray, localServer, baseUrl, settings, clientState, protocol, quitting = false, hideTimer, lastShown = 0, generation = 0;
 const seen = new Set();
 let dismissShortcut = '', shortcutError = '', shortcutCaptureTimer;
-let playbackAbort, playbackDirectory, presets, overlayLayer;
+let playbackAbort, playbackDirectory, overlayLayer;
 let playbackAutomatic = false, playbackDuration = 0;
 function finishShortcutCapture() { clearTimeout(shortcutCaptureTimer); globalShortcut.setSuspended(false); }
 function bindDismissShortcut(value) {
@@ -222,9 +80,7 @@ function secureWindow(window) {
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.on('will-attach-webview', event => event.preventDefault());
 }
-let playbackReplay = false;
 function clearOverlay() {
-  playbackReplay = false;
   generation++; clearTimeout(hideTimer); currentOverlayContentSize = null;
   playbackAbort?.abort(); playbackAbort = null;
   if (playbackDirectory) { const directory = playbackDirectory; playbackDirectory = null; void fs.rm(directory, { recursive:true, force:true, maxRetries:3, retryDelay:100 }).catch(() => {}); }
@@ -314,9 +170,7 @@ async function saveSettings(value, applyShortcut = false) {
   if (value.dismissShortcut !== undefined && !protocol.validDismissShortcut(value.dismissShortcut)) throw new Error('Raccourci invalide. Ctrl + Maj + F8 est réservé à la pause.');
   const next = protocol.cleanSettings(value);
   if (applyShortcut || next.dismissShortcut !== settings.dismissShortcut) { finishShortcutCapture(); bindDismissShortcut(next.dismissShortcut); }
-  const autoStartChanged = next.autoStart !== settings.autoStart;
   settings = next;
-  if (autoStartChanged) void applyAutoStart(settings.autoStart !== false);
   if (settings.paused) clearOverlay();
   else if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:volume', settings.volume);
   const snapshot = JSON.stringify(settings, null, 2);
@@ -352,11 +206,9 @@ function positionOverlay(contentSize) {
   overlay.setBounds({ x, y, width, height });
 }
 async function displayReaction(payload, test = false) {
-  const replay = Boolean(payload?.replay);
-  if (settings.paused && !replay) return { shown: false, reason: 'paused' };
-  playbackReplay = replay;
+  if (settings.paused) return { shown: false, reason: 'paused' };
   const now = Date.now();
-  if (!test && !replay && (now - lastShown < settings.cooldown * 1000 || seen.has(payload?.id))) return { shown: false, reason: 'cooldown' };
+  if (!test && (now - lastShown < settings.cooldown * 1000 || seen.has(payload?.id))) return { shown: false, reason: 'cooldown' };
   if (!payload || typeof payload !== 'object') throw new Error('Réaction invalide.');
   const server = protocol.normalizeServer(payload.server);
   const media = new Map();
@@ -369,12 +221,11 @@ async function displayReaction(payload, test = false) {
   const automatic = protocol.hasTimedMedia(reaction) && !reaction.customDuration && reaction.durationMode !== 'fixed';
   const delay = Number.isFinite(payload.delay) ? Math.max(0, Math.min(payload.delay, 1000)) : 0;
   lastShown = now;
-  if (!replay && typeof payload.id === 'string') { seen.add(payload.id.slice(0,80)); if (seen.size > 100) seen.delete(seen.values().next().value); }
+  if (typeof payload.id === 'string') { seen.add(payload.id.slice(0,80)); if (seen.size > 100) seen.delete(seen.values().next().value); }
   clearOverlay(); const currentGeneration = generation;
-  playbackReplay = replay;
   const abort = new AbortController(); playbackAbort = abort;
   if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-  if (generation !== currentGeneration || (settings.paused && !replay)) return { shown: false, reason: 'cancelled' };
+  if (generation !== currentGeneration || settings.paused) return { shown: false, reason: 'cancelled' };
   let directory;
   try {
     if (reaction.media || reaction.audio) {
@@ -383,28 +234,13 @@ async function displayReaction(payload, test = false) {
       playbackDirectory = directory;
       for (const key of ['media','audio']) if (reaction[key]) {
         const file = path.join(directory, key);
-        try {
-          await downloadAsset(reaction[key], server, file, abort.signal);
-        } catch (downloadErr) {
-          if (!replay) throw downloadErr;
-          let recovered = false;
-          const candidates = [reaction[key].name, `${key}_${reaction[key].id}`].filter(Boolean);
-          for (const cand of candidates) {
-            try {
-              const localPath = path.join(MEMEROOM_DIR, path.basename(cand));
-              await fs.copyFile(localPath, file);
-              recovered = true;
-              break;
-            } catch {}
-          }
-          if (!recovered) throw downloadErr;
-        }
+        await downloadAsset(reaction[key], server, file, abort.signal);
         reaction[key].playbackURL = pathToFileURL(file).href;
         const assetName = reaction[key].name || `${key}_${reaction[key].id}`;
         const isSilentAudio = key === 'audio' && (assetName === 'silent_audio.wav' || assetName.startsWith('silent_'));
-        if (!isSilentAudio && !replay) {
+        if (!isSilentAudio) {
           try {
-            const saveRes = await saveMemeAsset(file, assetName, reaction[key].kind);
+            const saveRes = await savedMemes.save(file, assetName);
             if (saveRes.saved && control && !control.isDestroyed()) {
               control.webContents.send('savedMemes:updated');
             }
@@ -414,7 +250,7 @@ async function displayReaction(payload, test = false) {
         }
       }
     }
-    if (generation !== currentGeneration || (settings.paused && !replay)) return { shown:false, reason:'cancelled' };
+    if (generation !== currentGeneration || settings.paused) return { shown:false, reason:'cancelled' };
     positionOverlay(); playbackAutomatic = automatic; playbackDuration = reaction.duration;
     overlay.webContents.send('overlay:show', { ...reaction, server, playbackId:currentGeneration, volume:settings.volume, sender:protocol.cleanText(payload.sender?.name,24) });
     hideTimer = setTimeout(clearOverlay, 65000);
@@ -432,7 +268,6 @@ if (singleInstance) app.whenReady().then(async () => {
   const startupUpdate = await checkStartupUpdate({ app, BrowserWindow, ipcMain, hidden: isHiddenLaunch });
   if (startupUpdate.installed) return;
   protocol = await import(pathToFileURL(path.join(__dirname, '../shared/protocol.mjs')).href);
-  presets = new Presets(path.join(app.getPath('userData'), 'saved-messages'), protocol);
   try {
     settings = protocol.cleanSettings(JSON.parse(await fs.readFile(settingsPath(), 'utf8')));
   } catch (error) {
@@ -504,301 +339,27 @@ if (singleInstance) app.whenReady().then(async () => {
     return { settings, clientState, history, shortcutError, platform: process.platform, server: baseUrl, addresses, displays: screen.getAllDisplays().map((d, i) => ({ id: String(d.id), label: d.label || `Écran ${i + 1} · ${d.size.width} × ${d.size.height}` })) };
   });
   ipcMain.handle('client:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveClient(value); });
-  ipcMain.handle('history:load', async event => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return loadHistoryFile(); });
-  ipcMain.handle('history:save', async (event, list) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveHistoryFile(list); });
-  ipcMain.handle('presets:list', event => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.list(); });
-  ipcMain.handle('presets:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.save(value); });
-  ipcMain.handle('presets:rename', (event, id, name) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.rename(id, name); });
-  ipcMain.handle('presets:remove', (event, id) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.remove(id); });
-  ipcMain.handle('presets:load', (event, id, server, token) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return presets.load(id, server, token); });
-  ipcMain.handle('savedMemes:list', async event => {
-    if (!trustedControl(event)) throw new Error('Accès refusé.');
-    await fs.mkdir(MEMEROOM_DIR, { recursive: true });
-    const entries = await fs.readdir(MEMEROOM_DIR, { withFileTypes: true });
-    const eligible = entries.filter(entry => entry.isFile() && !entry.name.startsWith('.') && !entry.name.startsWith('silent_'));
-    const items = (await Promise.all(eligible.map(async entry => {
-      const ext = path.extname(entry.name).toLowerCase();
-      let kind = 'other';
-      if (IMAGE_EXTS.has(ext)) kind = 'image';
-      else if (VIDEO_EXTS.has(ext)) kind = 'video';
-      else if (AUDIO_EXTS.has(ext)) kind = 'audio';
-      try {
-        const stat = await fs.stat(path.join(MEMEROOM_DIR, entry.name));
-        return {
-          name: entry.name,
-          size: stat.size,
-          mtime: stat.mtimeMs,
-          kind,
-          url: `/saved-memes/${encodeURIComponent(entry.name)}`
-        };
-      } catch {
-        return null;
-      }
-    }))).filter(Boolean);
-    items.sort((a, b) => b.mtime - a.mtime);
-    return items;
-  });
+  ipcMain.handle('savedMemes:list', event => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return savedMemes.list(); });
   ipcMain.handle('savedMemes:openFolder', async event => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
     await fs.mkdir(MEMEROOM_DIR, { recursive: true });
     return shell.openPath(MEMEROOM_DIR);
   });
-  ipcMain.handle('savedMemes:openFile', async (event, name) => {
-    if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const safeName = path.basename(name);
-    return shell.openPath(path.join(MEMEROOM_DIR, safeName));
-  });
   ipcMain.handle('savedMemes:rename', async (event, oldName, newName) => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const safeOld = path.basename(oldName);
-    let safeNew = sanitizeMemeFilename(newName);
-    if (!safeNew) throw new Error('Nom invalide.');
-    const oldExt = path.extname(safeOld).toLowerCase();
-    if (!path.extname(safeNew)) safeNew += oldExt;
-    if (safeOld === safeNew) return safeNew;
-    const oldPath = path.join(MEMEROOM_DIR, safeOld);
-    const newPath = path.join(MEMEROOM_DIR, safeNew);
-    try {
-      await fs.access(newPath);
-      throw new Error(`Un fichier nommé « ${safeNew} » existe déjà.`);
-    } catch (e) {
-      if (e.message.includes('existe déjà')) throw e;
-    }
-    await fs.rename(oldPath, newPath);
-    if (memeHashCache.has(safeOld)) {
-      const info = memeHashCache.get(safeOld);
-      memeHashCache.delete(safeOld);
-      memeHashCache.set(safeNew, info);
-      hashToFilename.set(info.hash, safeNew);
-      persistHashCache();
-    }
+    const name = await savedMemes.rename(oldName, newName);
     if (control && !control.isDestroyed()) control.webContents.send('savedMemes:updated');
-    return safeNew;
+    return name;
   });
   ipcMain.handle('savedMemes:delete', async (event, name) => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const safeName = path.basename(name);
-    await fs.rm(path.join(MEMEROOM_DIR, safeName), { force: true });
-    if (memeHashCache.has(safeName)) {
-      const info = memeHashCache.get(safeName);
-      memeHashCache.delete(safeName);
-      if (hashToFilename.get(info.hash) === safeName) {
-        hashToFilename.delete(info.hash);
-      }
-      persistHashCache();
-    }
+    await savedMemes.remove(name);
     if (control && !control.isDestroyed()) control.webContents.send('savedMemes:updated');
     return true;
   });
-  ipcMain.handle('savedMemes:read', async (event, name) => {
-    if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const safeName = path.basename(name);
-    const buf = await fs.readFile(path.join(MEMEROOM_DIR, safeName));
-    return { name: safeName, bytes: buf.byteLength, buffer: buf };
-  });
-  ipcMain.handle('media:extractAudio', async (event, { name, buffer }) => {
-    if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const rawSafeName = path.basename(name || 'media');
-    const safeBaseName = rawSafeName.replace(/\.[^.]+$/, '');
-    const ext = path.extname(rawSafeName).toLowerCase() || '.mp4';
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-audio-'));
-    const inputPath = path.join(tempDir, `input${ext}`);
-    const outputPathMp3 = path.join(tempDir, `${safeBaseName}.mp3`);
-    try {
-      await fs.writeFile(inputPath, Buffer.from(buffer));
-      let ffmpegBin;
-      try {
-        ffmpegBin = require('ffmpeg-static');
-        if (typeof ffmpegBin === 'string' && app.isPackaged) {
-          ffmpegBin = ffmpegBin.replace('app.asar', 'app.asar.unpacked');
-        }
-        if (!ffmpegBin || !require('node:fs').existsSync(ffmpegBin)) {
-          ffmpegBin = 'ffmpeg';
-        }
-      } catch {
-        ffmpegBin = 'ffmpeg';
-      }
-
-      const { execFile } = require('node:child_process');
-      const { promisify } = require('node:util');
-      const execFileAsync = promisify(execFile);
-
-      let extracted = false;
-      try {
-        await execFileAsync(ffmpegBin, [
-          '-y',
-          '-i', inputPath,
-          '-vn',
-          '-c:a', 'libmp3lame',
-          '-q:a', '2',
-          outputPathMp3
-        ], { windowsHide: true });
-        extracted = true;
-      } catch (mp3Err) {}
-
-      if (!extracted) {
-        const outputPathWav = path.join(tempDir, `${safeBaseName}.wav`);
-        try {
-          await execFileAsync(ffmpegBin, [
-            '-y',
-            '-i', inputPath,
-            '-vn',
-            '-f', 'wav',
-            outputPathWav
-          ], { windowsHide: true });
-          const wavBytes = await fs.readFile(outputPathWav);
-          return {
-            name: `${safeBaseName}.wav`,
-            buffer: wavBytes,
-            mime: 'audio/wav',
-            size: wavBytes.length
-          };
-        } catch (wavErr) {
-          throw new Error('Cette vidéo ne contient pas de piste audio exploitable.');
-        }
-      }
-
-      const mp3Bytes = await fs.readFile(outputPathMp3);
-      return {
-        name: `${safeBaseName}.mp3`,
-        buffer: mp3Bytes,
-        mime: 'audio/mpeg',
-        size: mp3Bytes.length
-      };
-    } finally {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    }
-  });
-  ipcMain.handle('media:trim', async (event, { name, buffer, start, end, asAudio = false }) => {
-    if (!trustedControl(event)) throw new Error('Accès refusé.');
-    const rawSafeName = path.basename(name || 'media');
-    const baseName = rawSafeName.replace(/\.[^.]+$/, '');
-    const ext = path.extname(rawSafeName).toLowerCase() || '.mp4';
-    const safeName = asAudio ? `${baseName}.mp3` : rawSafeName;
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-trim-'));
-    const inputPath = path.join(tempDir, `input${ext}`);
-    const outputPath = path.join(tempDir, `trimmed_${safeName}`);
-    try {
-      await fs.writeFile(inputPath, Buffer.from(buffer));
-      let ffmpegBin;
-      try {
-        ffmpegBin = require('ffmpeg-static');
-        if (typeof ffmpegBin === 'string' && app.isPackaged) {
-          ffmpegBin = ffmpegBin.replace('app.asar', 'app.asar.unpacked');
-        }
-        if (!ffmpegBin || !require('node:fs').existsSync(ffmpegBin)) {
-          ffmpegBin = 'ffmpeg';
-        }
-      } catch {
-        ffmpegBin = 'ffmpeg';
-      }
-
-      const { execFile } = require('node:child_process');
-      const { promisify } = require('node:util');
-      const execFileAsync = promisify(execFile);
-
-      const duration = Math.max(0.1, end - start);
-      let trimmed = false;
-
-      if (asAudio) {
-        try {
-          await execFileAsync(ffmpegBin, [
-            '-y',
-            '-ss', String(start),
-            '-i', inputPath,
-            '-t', String(duration),
-            '-vn',
-            '-c:a', 'libmp3lame',
-            '-q:a', '2',
-            outputPath
-          ], { windowsHide: true });
-          trimmed = true;
-        } catch (audioErr) {}
-
-        if (!trimmed) {
-          const fallbackWav = path.join(tempDir, `trimmed_${baseName}.wav`);
-          try {
-            await execFileAsync(ffmpegBin, [
-              '-y',
-              '-ss', String(start),
-              '-i', inputPath,
-              '-t', String(duration),
-              '-vn',
-              '-f', 'wav',
-              fallbackWav
-            ], { windowsHide: true });
-            const wavBytes = await fs.readFile(fallbackWav);
-            return {
-              name: `trim_${baseName}.wav`,
-              buffer: wavBytes,
-              mime: 'audio/wav',
-              size: wavBytes.length
-            };
-          } catch (wavErr) {
-            throw new Error('Impossible de découper la piste audio de cette vidéo.');
-          }
-        }
-      } else if (ext === '.webm') {
-        // Stream copy preserves per-frame dynamic resolution, aspect ratio animations,
-        // and alpha channels in WebM without re-encoding.
-        try {
-          await execFileAsync(ffmpegBin, [
-            '-y',
-            '-ss', String(start),
-            '-i', inputPath,
-            '-t', String(duration),
-            '-c', 'copy',
-            '-avoid_negative_ts', 'make_zero',
-            outputPath
-          ], { windowsHide: true });
-          trimmed = true;
-        } catch (copyErr) {}
-      }
-
-      if (!trimmed) {
-        try {
-          await execFileAsync(ffmpegBin, [
-            '-y',
-            '-ss', String(start),
-            '-i', inputPath,
-            '-t', String(duration),
-            '-preset', 'veryfast',
-            outputPath
-          ], { windowsHide: true });
-        } catch (presetErr) {
-          try {
-            await execFileAsync(ffmpegBin, [
-              '-y',
-              '-ss', String(start),
-              '-i', inputPath,
-              '-t', String(duration),
-              outputPath
-            ], { windowsHide: true });
-          } catch (reencErr) {
-            await execFileAsync(ffmpegBin, [
-              '-y',
-              '-ss', String(start),
-              '-i', inputPath,
-              '-t', String(duration),
-              '-c', 'copy',
-              '-avoid_negative_ts', 'make_zero',
-              outputPath
-            ], { windowsHide: true });
-          }
-        }
-      }
-
-      const trimmedBytes = await fs.readFile(outputPath);
-      return {
-        name: `trim_${safeName}`,
-        buffer: trimmedBytes,
-        size: trimmedBytes.length,
-        ...(asAudio ? { mime: outputPath.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg' } : {})
-      };
-    } finally {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    }
-  });
+  ipcMain.handle('savedMemes:read', (event, name) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return savedMemes.read(name); });
+  ipcMain.handle('media:extractAudio', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.extractAudio(options); });
+  ipcMain.handle('media:trim', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.trim(options); });
   ipcMain.handle('settings:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveSettings(value); });
   ipcMain.handle('shortcut:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveSettings({ ...settings, dismissShortcut: value }, true); });
   ipcMain.handle('shortcut:record', (event, active) => {
@@ -811,7 +372,7 @@ if (singleInstance) app.whenReady().then(async () => {
   ipcMain.on('overlay:clear', event => { if (trustedControl(event)) clearOverlay(); });
   ipcMain.on('overlay:done', (event, id) => { if (trustedOverlay(event) && id === generation) clearOverlay(); });
   ipcMain.on('overlay:ready', (event, id, contentSize) => {
-    if (trustedOverlay(event) && id === generation && (!settings.paused || playbackReplay)) {
+    if (trustedOverlay(event) && id === generation && !settings.paused) {
       if (contentSize && typeof contentSize.width === 'number' && typeof contentSize.height === 'number') {
         positionOverlay(contentSize);
       }

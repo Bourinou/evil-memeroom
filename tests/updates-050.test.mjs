@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, access } from 'node:fs/promises';
-import os from 'node:os';
+import { readFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import net from 'node:net';
 import { once } from 'node:events';
@@ -9,7 +8,6 @@ import { WebSocket } from 'ws';
 import { createRoomServer } from '../server/index.mjs';
 import { PasswordLimiter, clientIP } from '../server/password-limiter.mjs';
 import { scanClam } from '../server/media-scan.mjs';
-import { Presets } from '../desktop/presets.cjs';
 import * as protocol from '../shared/protocol.mjs';
 
 test('password budgets survive reconnects, isolate addresses, expire, and ignore untrusted proxy headers', () => {
@@ -43,27 +41,19 @@ test('antivirus protocol accepts only OK, rejects detections and unavailable eng
   answer='stream: scan failed ERROR\0'; await assert.rejects(scanClam(file,options), {status:503});
 });
 
-test('expired media is deleted from disk while members stay connected; saved messages reupload it',async t=>{
-  const directory=await mkdtemp(path.join(os.tmpdir(),'memeroom-presets-test-'));
+test('expired media is deleted from disk while members stay connected',async t=>{
   const files=[]; let rejectScan=false;
   const server=createRoomServer({host:'127.0.0.1',port:0,dataDir:null,mediaTtlMs:180,scanMedia:async asset=>{files.push(asset.file);if(rejectScan)throw Object.assign(new Error('Antivirus indisponible'),{status:503});}});
   const address=await server.start(),base=`http://127.0.0.1:${address.port}`;
-  t.after(async()=>{await server.stop();await rm(directory,{recursive:true,force:true});});
+  t.after(async()=>{await server.stop();});
   const ws=new WebSocket(base.replace('http:','ws:')+'/ws');await once(ws,'open');
   const reply=once(ws,'message');ws.send(JSON.stringify({id:'1',type:'create',data:{name:'Test'}}));const room=JSON.parse((await reply)[0]).data;
   const png=await readFile('public/icon.png');
   const upload=()=>fetch(base+'/api/media',{method:'POST',headers:{Authorization:`Bearer ${room.token}`,'X-Filename':'icon.png'},body:png});
   const uploaded=await upload();assert.equal(uploaded.status,201);const asset=await uploaded.json();
-  const presets=new Presets(directory,protocol);
-  const saved=await presets.save({name:'Réaction favorite',reaction:{server:base,media:asset,caption:'Salut',duration:2}});
   await new Promise(r=>setTimeout(r,420));
   assert.equal((await fetch(base+asset.url)).status,404);await assert.rejects(access(files[0]));
   assert.equal(ws.readyState,WebSocket.OPEN);
-  const reopened=new Presets(directory,protocol);assert.equal((await reopened.list())[0].name,'Réaction favorite');
-  const loaded=await reopened.load(saved.id,base,room.token);assert.equal(loaded.caption,'Salut');assert.notEqual(loaded.media.id,asset.id);
-  assert.equal((await fetch(base+loaded.media.url)).status,200);
   rejectScan=true;assert.equal((await upload()).status,503);
   await new Promise(r=>setTimeout(r,20));await assert.rejects(access(files.at(-1)));
-  await reopened.rename(saved.id,'Encore');assert.equal((await reopened.list())[0].name,'Encore');
-  await reopened.remove(saved.id);assert.equal((await reopened.list()).length,0);
 });
