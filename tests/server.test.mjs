@@ -102,7 +102,9 @@ test('unexpected upload errors are 500s and full storage carries an explicit sta
 });
 test('health reports the version from package.json',async t=>{
   const base=await fixture(t);const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
-  assert.equal((await (await fetch(base+'/api/health')).json()).version,pkg.version);
+  const health=await (await fetch(base+'/api/health')).json();
+  assert.equal(health.version,pkg.version);
+  assert.equal(health.features.nativeDuration,true);
 });
 const roomCodeAt=i=>'ROOM'+String.fromCharCode(65+Math.floor(i/26))+String.fromCharCode(65+i%26)+'AA';
 const savedRoom=(i,extra={})=>({code:roomCodeAt(i),name:'Room '+i,isPrivate:true,passwordHash:null,ownerHash:null,accessKey:'k'.repeat(43),...extra});

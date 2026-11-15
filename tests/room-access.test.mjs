@@ -31,7 +31,7 @@ test('the website serves downloads and no public controller, including on an emb
   const home = await (await fetch(f.base)).text(); assert.match(home, /Télécharger l’application/); assert.doesNotMatch(home, /send-form|Ouvrir la télécommande/);
   for (const url of ['/remote', '/desktop', '/desktop?key=anything', '/index.html', '/app.mjs', '/connection.mjs']) assert.equal((await fetch(f.base + url)).status, 404);
   assert.equal((await fetch(f.base + '/styles.css')).status, 200);
-  assert.deepEqual((await (await fetch(f.base + '/api/health')).json()).features, { roomAccess: true, roomDirectory: true, mediaEviction: true, mediaExpiry:true, largeUploads:true, antivirusRequired:false });
+  assert.deepEqual((await (await fetch(f.base + '/api/health')).json()).features, { roomAccess: true, roomDirectory: true, mediaEviction: true, mediaExpiry:true, largeUploads:true, nativeDuration:true, antivirusRequired:false });
 });
 test('public directory excludes private rooms and never exposes access credentials', async t => {
   const f = await fixture(t), owner = await client(f.base);

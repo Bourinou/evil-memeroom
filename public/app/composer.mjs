@@ -305,6 +305,16 @@ const updateGifPlays = () => {
 };
 $('#gif-plays')?.addEventListener('input', updateGifPlays);
 $('#gif-plays')?.addEventListener('change', updateGifPlays);
+const nativeDurationSupport = new Map();
+function supportsNativeDuration(server) {
+  if (!nativeDurationSupport.has(server)) {
+    nativeDurationSupport.set(server, fetch(`${server}/api/health`, { signal: AbortSignal.timeout(6000) })
+      .then(response => response.ok ? response.json() : null)
+      .then(health => health?.features?.nativeDuration === true)
+      .catch(() => { nativeDurationSupport.delete(server); return false; }));
+  }
+  return nativeDurationSupport.get(server);
+}
 $('#send-form').addEventListener('submit', async event => {
   event.preventDefault(); if ($('#broadcast').disabled) return;
   sending = true; renderSend();
@@ -318,7 +328,13 @@ $('#send-form').addEventListener('submit', async event => {
     }
     const payload = currentReaction();
     const durationVal = Number(payload.duration);
-    if (!state.audio && state.visual?.kind !== 'video' && Number.isFinite(durationVal) && (durationVal < 2 || durationVal > LIMITS.durationMax)) {
+    const untimedCustom = !state.audio && state.visual?.kind !== 'video' && Number.isFinite(durationVal) && (durationVal < 2 || durationVal > LIMITS.durationMax);
+    if (untimedCustom && await supportsNativeDuration(payload.server)) {
+      payload.customDuration = true;
+      payload.durationMode = 'fixed';
+      payload.subtitles = embedReactionMeta(state.cues, { customDuration: true, duration: durationVal });
+    } else if (untimedCustom) {
+      // Legacy servers only accept a long text/image duration with a timed (silent) audio track.
       const silentAsset = await uploadSilentAudio(durationVal);
       payload.audioId = silentAsset.id;
       payload.audio = silentAsset;

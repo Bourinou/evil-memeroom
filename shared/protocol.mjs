@@ -99,12 +99,13 @@ export function validateReaction(input, media) {
   // A bounded numeric fallback keeps the wire format readable by older clients.
   // Updated receivers always use the players' ended events for video/audio.
   const timed = hasTimedMedia({ media: visual, audio });
-  const custom = timed && inputCustom && Number.isFinite(inputDuration);
+  // customDuration (native field or legacy meta cue) allows up to 600 s for any content.
+  const custom = inputCustom && Number.isFinite(inputDuration);
   const automatic = timed && !custom;
-  const maxDuration = timed ? 600 : LIMITS.durationMax;
+  const maxDuration = timed || custom ? 600 : LIMITS.durationMax;
   const duration = automatic ? LIMITS.durationMax : inputDuration;
   if (!Number.isFinite(duration) || duration < LIMITS.durationMin || duration > maxDuration) {
-    throw new Error(timed ? 'La durée doit être comprise entre 0.1 et 600 secondes.' : 'La durée doit être comprise entre 0.1 et 15 secondes.');
+    throw new Error(timed || custom ? 'La durée doit être comprise entre 0.1 et 600 secondes.' : 'La durée doit être comprise entre 0.1 et 15 secondes.');
   }
   let cleanSubtitles = validCues(input.subtitles);
   if (custom && !cleanSubtitles.some(c => c.text?.startsWith(META_CUE_PREFIX))) {

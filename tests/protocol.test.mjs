@@ -189,3 +189,21 @@ test('embedReactionMeta and applyReactionMeta preserve customDuration through le
   assert.equal(restored.subtitles[0].text, 'Hello');
 });
 
+test('native customDuration allows up to 600 seconds without timed media and keeps the legacy cue',()=>{
+  const media=new Map([['image',{id:'image',name:'a.png',kind:'image',mime:'image/png',bytes:1}]]);
+  const text=validateReaction({caption:'Long',duration:120,customDuration:true},new Map());
+  assert.equal(text.duration,120); assert.equal(text.durationMode,'fixed'); assert.equal(text.customDuration,true);
+  assert.deepEqual(extractReactionMeta(text),{customDuration:true,duration:120});
+  assert.equal(validateReaction({mediaId:'image',duration:0.5,customDuration:true},media).duration,0.5);
+  assert.equal(validateReaction({mediaId:'image',duration:600,customDuration:true},media).duration,600);
+  assert.throws(()=>validateReaction({caption:'Long',duration:601,customDuration:true},new Map()),/600/);
+  assert.throws(()=>validateReaction({caption:'Long',duration:20},new Map()),/15 secondes/);
+});
+test('legacy reactions (silent audio + meta cue) are still read',()=>{
+  const media=new Map([['silent',{id:'silent',name:'silent_audio.wav',kind:'audio',mime:'audio/wav',bytes:1}]]);
+  const legacy={caption:'Old',audioId:'silent',duration:30,subtitles:embedReactionMeta([],{customDuration:true,duration:30})};
+  const reaction=validateReaction(legacy,media);
+  assert.equal(reaction.duration,30); assert.equal(reaction.customDuration,true); assert.equal(reaction.durationMode,'fixed');
+  const applied=applyReactionMeta({...reaction});
+  assert.equal(applied.duration,30); assert.equal(applied.subtitles.length,0);
+});
