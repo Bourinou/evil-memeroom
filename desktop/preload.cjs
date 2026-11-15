@@ -16,7 +16,8 @@ contextBridge.exposeInMainWorld('memeroom', {
   renameSavedMeme: (oldName, newName) => ipcRenderer.invoke('savedMemes:rename', oldName, newName),
   readSavedMeme: name => ipcRenderer.invoke('savedMemes:read', name),
   uploadSavedMeme: options => ipcRenderer.invoke('savedMemes:upload', options),
-  pathForFile: file => webUtils.getPathForFile(file),
+  // Only genuine user-picked/dropped File objects yield a path; main then allows ffmpeg to read exactly that path.
+  pathForFile: file => { const filePath = webUtils.getPathForFile(file); if (filePath) ipcRenderer.send('media:allowPath', filePath); return filePath; },
   trimMedia: options => ipcRenderer.invoke('media:trim', options),
   extractAudio: options => ipcRenderer.invoke('media:extractAudio', options),
   saveHistory: list => ipcRenderer.invoke('history:save', list),

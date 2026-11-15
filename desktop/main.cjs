@@ -25,7 +25,7 @@ const os = require('node:os');
 const { CONTROL_URL, installControlPage } = require('./control-page.cjs');
 const { downloadAsset, uploadAsset } = require('./media-files.cjs');
 const { createSavedMemes } = require('./saved-memes.cjs');
-const { createMediaTools } = require('./media-tools.cjs');
+const { createMediaTools, createPathAllowlist } = require('./media-tools.cjs');
 const { createOverlayLayer } = require('./overlay-layer.cjs');
 const {
   migrateMemesDir,
@@ -39,7 +39,8 @@ const MEMEROOM_DIR = path.join(os.homedir(), 'evil-memeroom');
 fs.mkdir(MEMEROOM_DIR, { recursive: true }).catch(() => {});
 
 const savedMemes = createSavedMemes({ memesDir: MEMEROOM_DIR, hashCachePath: () => path.join(app.getPath('userData'), 'hashes.json') });
-const mediaTools = createMediaTools({ isPackaged: app.isPackaged, downloadAsset, uploadAsset, savedMemePath: savedMemes.pathFor });
+const pickedFiles = createPathAllowlist();
+const mediaTools = createMediaTools({ isPackaged: app.isPackaged, downloadAsset, uploadAsset, savedMemePath: savedMemes.pathFor, isAllowedPath: pickedFiles.has });
 
 // Overlay placement and always-on-top windows require X11, including through XWayland.
 if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
@@ -374,6 +375,7 @@ if (singleInstance) app.whenReady().then(async () => {
     return true;
   });
   ipcMain.handle('savedMemes:read', (event, name) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return savedMemes.read(name); });
+  ipcMain.on('media:allowPath', (event, file) => { if (trustedControl(event)) pickedFiles.allow(file); });
   ipcMain.handle('media:extractAudio', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.extractAudio(options); });
   // Media never crosses IPC: the renderer names a source (server asset, saved meme or dropped file path); the main process downloads, runs ffmpeg and imports the result.
   ipcMain.handle('media:trim', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.trim(options); });

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -48,4 +49,21 @@ test('uploadWithRetry retries 429 up to 3 attempts, not other errors', async () 
   calls = 0;
   await assert.rejects(uploadWithRetry(async () => { calls++; throw new Error('x'); }, async () => {}), /x/);
   assert.equal(calls, 1);
+});
+
+test('path allowlist only accepts absolute paths it was given', () => {
+  const { createPathAllowlist } = require('../desktop/media-tools.cjs');
+  const list = createPathAllowlist(2);
+  const a = path.resolve('/v/a.webm');
+  const b = path.resolve('/v/b.webm');
+  const c = path.resolve('/v/c.webm');
+  assert.equal(list.has(a), false);
+  assert.equal(list.allow('relative.webm'), false);
+  assert.equal(list.allow(a), true);
+  assert.equal(list.has(a), true);
+  assert.equal(list.has(b), false);
+  assert.equal(list.has(undefined), false);
+  list.allow(b); list.allow(c);
+  assert.equal(list.has(a), false, 'oldest entry evicted past the limit');
+  assert.equal(list.has(c), true);
 });

@@ -57,6 +57,23 @@ function trimArgs(inputPath, outputPath, start, duration, mode) {
   }
 }
 
+// Paths the user really picked or dropped (reported by the preload, which only sees genuine File objects).
+// Bounded so a long session cannot grow it forever.
+function createPathAllowlist(limit = 200) {
+  const paths = new Set();
+  return {
+    allow(file) {
+      if (typeof file !== 'string' || !path.isAbsolute(file)) return false;
+      const key = path.resolve(file);
+      paths.delete(key);
+      paths.add(key);
+      if (paths.size > limit) paths.delete(paths.values().next().value);
+      return true;
+    },
+    has: file => typeof file === 'string' && path.isAbsolute(file) && paths.has(path.resolve(file))
+  };
+}
+
 const UPLOAD_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 
@@ -84,7 +101,7 @@ async function withTempDir(prefix, fn) {
 // downloadAsset / uploadAsset come from media-files.cjs; savedMemePath(name) from saved-memes.cjs.
 // Every operation takes a source (`asset`, `savedName` or `filePath`) plus `server` and `token`,
 // works on disk and returns the asset imported on the server: no media buffer crosses IPC.
-function createMediaTools({ isPackaged, downloadAsset, uploadAsset, savedMemePath }) {
+function createMediaTools({ isPackaged, downloadAsset, uploadAsset, savedMemePath, isAllowedPath = () => false }) {
   async function acquireInput(source, tempDir) {
     const { asset, savedName, filePath, server } = source;
     if (asset) {
@@ -94,6 +111,7 @@ function createMediaTools({ isPackaged, downloadAsset, uploadAsset, savedMemePat
       await downloadAsset(asset, server, inputPath);
       return { inputPath, name, ext };
     }
+    if (!savedName && !isAllowedPath(filePath)) throw new Error('Fichier non autorisé.');
     const target = savedName ? savedMemePath(savedName) : filePath;
     if (typeof target !== 'string' || !path.isAbsolute(target) || !(await fs.stat(target)).isFile()) throw new Error('Fichier introuvable.');
     const name = path.basename(target);
@@ -201,4 +219,4 @@ function createMediaTools({ isPackaged, downloadAsset, uploadAsset, savedMemePat
   return { extractAudio, trim, uploadSavedMeme };
 }
 
-module.exports = { createMediaTools, resolveFfmpeg, runFfmpeg, safeBaseName, validateRange, extractArgs, trimArgs, uploadWithRetry, FFMPEG_TIMEOUT_MS };
+module.exports = { createMediaTools, createPathAllowlist, resolveFfmpeg, runFfmpeg, safeBaseName, validateRange, extractArgs, trimArgs, uploadWithRetry, FFMPEG_TIMEOUT_MS };
