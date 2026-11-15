@@ -4,11 +4,12 @@ MemeRoom comporte trois parties : un serveur de rooms, une télécommande dans l
 
 | Dossier | Responsabilité et points d’entrée |
 | --- | --- |
-| `server/` | `index.mjs` : HTTP, WebSocket et sessions ; `room-store.mjs` : persistance ; `room-access.mjs` et `password-limiter.mjs` : accès ; `media-storage.mjs` : flux et expiration ; `media-scan.mjs` : antivirus et inspection |
-| `desktop/` | `main.cjs` : fenêtres, IPC, raccourcis et stockage utilisateur ; `control-page.cjs` : pages privées ; `overlay-layer.cjs` : ordre des fenêtres ; `media-files.cjs` : téléchargement ; `presets.cjs` : messages enregistrés |
-| `public/` | `downloads.html` : site public ; `index.html` et `app.mjs` : contrôle privé ; `connection.mjs` : connexion ; `media-view.mjs` : rendu partagé entre aperçu et overlay |
-| `shared/` | `protocol.mjs` : validation, normalisation, limites et réglages communs |
-| `scripts/` | Compilation, packaging et installation Mac |
+| `server/` | `index.mjs` : HTTP, WebSocket et sessions ; `room-store.mjs` : persistance ; `room-access.mjs` et `password-limiter.mjs` : accès ; `media.mjs` : détection du format ; `media-storage.mjs` : flux et expiration ; `media-capacity.mjs` : quotas ; `media-scan.mjs` : antivirus et inspection ; `releases.mjs` et `release-platforms.mjs` : téléchargements et noms des fichiers de release |
+| `desktop/` | `main.cjs` : fenêtres, IPC, raccourcis et stockage utilisateur ; `control-page.cjs` : pages privées ; `overlay-layer.cjs` : ordre des fenêtres ; `media-files.cjs` : téléchargement et import ; `saved-memes.cjs` : mèmes enregistrés (dossier `~/evil-memeroom`) ; `media-tools.cjs` : découpe et extraction audio avec ffmpeg |
+| `public/` | `downloads.html` : site public ; `index.html`, `app.mjs` et `app/*.mjs` (`state`, `rooms`, `composer`, `upload`, `history`, `saved-memes`, `trim`, `settings`) : contrôle privé ; `connection.mjs` : connexion ; `media-view.mjs` : rendu partagé entre aperçu et overlay |
+| `shared/` | `protocol.mjs` : validation, normalisation, limites et réglages communs ; `history.mjs` : nettoyage, fusion et filtrage par room de l’historique |
+| `scripts/` | Compilation, packaging, préparation de `releases/` et installation Mac |
+| `.github/workflows/` | `ci.yml` : `npm run check` et `npm test` à chaque push (Ubuntu, Windows) ; `release.yml` : build des installateurs sur tag ou déclenchement manuel |
 | `deploy/` | Configuration de ClamAV ; les fichiers Compose et Nginx sont à la racine |
 | `tests/` | Tests unitaires et vérifications Electron ciblées avec profils temporaires |
 
@@ -19,7 +20,7 @@ MemeRoom comporte trois parties : un serveur de rooms, une télécommande dans l
 3. Un envoi référence les identifiants de médias de cette room. Le serveur valide le texte et les options, puis diffuse l’événement aux membres connectés.
 4. Chaque participant applique pause, délai entre messages et déduplication. Le processus principal télécharge complètement les fichiers avant de demander le rendu.
 5. Le renderer confirme que les médias sont prêts. L’overlay apparaît sans focus ; le texte et les images utilisent une durée, les médias temporels utilisent leur fin réelle. L’audio ajouté remplace le son d’une vidéo.
-6. Fin de lecture, raccourci d’arrêt, pause ou remplacement détruisent le rendu et suppriment les copies temporaires. Les messages enregistrés restent dans le stockage personnel.
+6. Fin de lecture, raccourci d’arrêt, pause ou remplacement détruisent le rendu et suppriment les copies temporaires. Les mèmes reçus sont enregistrés dans `~/evil-memeroom` si le réglage « Enregistrer les mèmes reçus » est actif (par défaut) ; l’extension est imposée d’après le format détecté.
 
 ## HTTP et WebSocket
 
@@ -29,6 +30,10 @@ Le contrat exact des messages, erreurs et limites est défini dans `shared/proto
 
 ## Données et concurrence
 
-Les rooms sont persistées séparément des médias éphémères. Les nouveaux mots de passe révoquent les sessions concernées. Les médias valides sont évincés du plus ancien au plus récent quand un quota est atteint et expirent au bout de dix minutes. Les générations de lecture et AbortController empêchent qu’un téléchargement ancien réaffiche un contenu après une interruption.
+Les rooms sont persistées séparément des médias éphémères (`rooms.json`, version 3 avec la date de dernière activité ; les versions 1 et 2 restent lisibles, mais un ancien serveur ne lit pas la version 3). Quand le serveur est plein, la création d’une room évince la room inactive la plus ancienne, jamais une room occupée. Un `rooms.json` invalide est renommé `rooms.json.corrupt-<date>` et le serveur local repart à vide. Les nouveaux mots de passe révoquent les sessions concernées. Les médias valides sont évincés du plus ancien au plus récent quand un quota est atteint et expirent au bout de dix minutes. Les générations de lecture et AbortController empêchent qu’un téléchargement ancien réaffiche un contenu après une interruption.
+
+Les réactions peuvent porter `customDuration` et `duration` (jusqu’à 600 s). Le serveur ajoute toujours l’ancien sous-titre `@@evil-meta:` pour les anciens clients ; `/api/health` annonce `features.nativeDuration`, et un client n’envoie un WAV silencieux qu’à un serveur sans cet indicateur. Le délai entre deux messages est de 2 s (`LIMITS.cooldownMs`). La découpe et l’extraction audio se font dans le processus principal (`media:trim`, `media:extractAudio`, `savedMemes:upload`), sans tampon sur l’IPC ; `filePath` n’est accepté que pour un fichier déposé ou choisi dans la page.
+
+L’historique (`history.json`, dans le dossier utilisateur) garde au plus 100 éléments ; chaque élément porte son serveur et sa room ; les anciens sans room restent visibles partout.
 
 Le délai de l’overlay doit commencer à la confirmation du renderer, jamais à la réception réseau. Le maintien au premier plan ne doit jamais appeler `focus()` ; voir [PLEIN-ECRAN.md](PLEIN-ECRAN.md).

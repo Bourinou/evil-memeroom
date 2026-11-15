@@ -26,8 +26,9 @@ Le projet est distribué sous [CC BY-NC-SA 4.0](LICENSE) : attribution, usage no
 - 1 Go maximum par fichier (1 073 741 824 octets). Les fichiers sont reçus et servis en flux depuis le disque, sans les conserver intégralement en mémoire du serveur.
 - Fichiers supprimés du serveur 10 minutes après validation, même si des participants restent connectés. Une lecture déjà téléchargée continue normalement.
 - Texte et pseudo blancs avec un contour noir, dans un style mème. Largeur maximale par défaut : 60 % de l’écran. Les tailles déjà choisies restent conservées.
-- Chaque participant reçoit ses propres messages ; l’ancien réglage permettant de les masquer est supprimé, même pour les anciennes préférences.
-- Messages enregistrés avec un nom dans l’onglet Enregistrés : recherche, chargement dans le compositeur, renommage et suppression. Leurs fichiers sont conservés localement et réimportés dans la room lors du chargement.
+- Chaque participant reçoit ses propres messages, sauf s’il coche « Ne pas afficher ce que j'envoie sur mon écran ».
+- Mèmes reçus enregistrés automatiquement dans `~/evil-memeroom` (réglage « Enregistrer les mèmes reçus », actif par défaut). L’onglet Enregistrés permet de les rechercher, renommer, supprimer, découper et d’en extraire l’audio ; l’extension du fichier est celle du format détecté.
+- Historique par room : les anciens éléments sans room restent visibles partout ; « Effacer » ne retire que ceux de la room courante.
 - Protection des mots de passe par adresse et par room, conservée pendant les reconnexions. Analyse ClamAV obligatoire et inspection FFprobe dans les déploiements Docker fournis.
 - Archives Mac avec un assistant d’installation qui recrée une signature locale. Il reste nécessaire de valider cet assistant sur un Mac ; il ne constitue pas une signature Apple Developer ID.
 
@@ -39,7 +40,7 @@ Le projet est distribué sous [CC BY-NC-SA 4.0](LICENSE) : attribution, usage no
 4. Cliquer sur Envoyer pour diffuser, Aperçu pour voir le résultat, ou Enregistrer pour conserver ce message avec ses fichiers sur cet appareil.
 5. Dans Enregistrés, Charger prépare un message dans la room actuelle. Il peut être modifié avant de cliquer sur Envoyer.
 
-Une image ou un texte sans audio reste affiché de 1 à 15 secondes, après chargement. Vidéos et audios n’ont pas cette limite de durée. Le raccourci d’arrêt, la pause ou un nouvel envoi accepté peuvent interrompre le contenu. Un lecteur bloqué pendant 30 secondes est arrêté ; le téléchargement a un délai distinct de 30 minutes maximum.
+Une image ou un texte sans audio reste affiché 5 secondes par défaut, après chargement ; « Choisir la durée » accepte de 0,1 à 600 secondes. Vidéos et audios n’ont pas cette limite de durée. Le raccourci d’arrêt, la pause ou un nouvel envoi accepté peuvent interrompre le contenu. Un lecteur bloqué pendant 30 secondes est arrêté ; le téléchargement a un délai distinct de 30 minutes maximum.
 
 **Ctrl + Maj + F9** arrête le contenu actuel. Ce raccourci est modifiable dans Réglages. **Ctrl + Maj + F8** met la réception en pause (Cmd + Maj + F8 sur Mac). Fermer la fenêtre conserve la réception ; utiliser Quitter MemeRoom dans la zone de notification pour arrêter l’application.
 
@@ -47,14 +48,15 @@ Une image ou un texte sans audio reste affiché de 1 à 15 secondes, après char
 
 Les rooms sont privées par défaut et peuvent être publiques, avec ou sans mot de passe. Le créateur modifie les accès depuis Accès de la room. Changer le mot de passe révoque les anciennes connexions et vide les fichiers temporaires. Les mots de passe sont hachés avec scrypt ; seuls des jetons d’accès sont mémorisés chez les participants.
 
-Les rooms et la dernière connexion sont enregistrées automatiquement. Retirer une room de la liste personnelle ne supprime pas la room commune. Le serveur doit rester accessible pour communiquer.
+Les rooms et la dernière connexion sont enregistrées automatiquement. Un serveur plein évince la room inactive la plus ancienne à la création d’une nouvelle (jamais une room occupée). Retirer une room de la liste personnelle ne supprime pas la room commune. Le serveur doit rester accessible pour communiquer.
 
 | Données | Stockage |
 | --- | --- |
 | Rooms du serveur | `data/rooms.json`, ou volume Docker `memeroom_data` |
 | Liste personnelle et accès | Dossier utilisateur de l’app, `saved-rooms.json` |
 | Réglages | Dossier utilisateur de l’app, `preferences.json` |
-| Messages enregistrés et fichiers | Dossier utilisateur de l’app, `saved-messages/` ; jusqu’à suppression explicite |
+| Mèmes enregistrés | `~/evil-memeroom` ; jusqu’à suppression explicite (l’ancien dossier `saved-messages/` n’est pas touché) |
+| Historique | Dossier utilisateur de l’app, `history.json` |
 | Fichiers de la room | Disque temporaire du serveur ; expiration après 10 minutes ou éviction si plein |
 | Copie en cours de lecture | Disque temporaire du participant ; supprimée à la fermeture de l’overlay |
 
@@ -62,7 +64,7 @@ Une bibliothèque conserve au maximum 30 fichiers et 2 Go par room ; 8 Go au tot
 
 ## Sécurité
 
-Seuls PNG, JPEG, GIF, WebP, MP4, WebM, MP3, WAV et OGG sont autorisés d’après leurs octets, jamais d’après leur nom. HTML, SVG et exécutables ne sont pas servis comme médias autorisés. Les textes et pseudos sont rendus avec `textContent` ; les fenêtres Electron n’ont pas accès à Node.js et utilisent un sandbox et des politiques CSP.
+Seuls PNG, JPEG, GIF, WebP, MP4 (marques `isom`, `mp41`, `mp42`, `avc1`, `mmp4`, `f4v `, `3gp4`–`3gp7`, etc. ; HEIC, AVIF et QuickTime refusés), WebM, MP3, WAV et OGG sont autorisés d’après leurs octets, jamais d’après leur nom. HTML, SVG et exécutables ne sont pas servis comme médias autorisés. Les textes et pseudos sont rendus avec `textContent` ; les fenêtres Electron n’ont pas accès à Node.js et utilisent un sandbox et des politiques CSP.
 
 Dans les fichiers Compose fournis, chaque import passe par ClamAV et FFprobe avant publication. Une menace, une limite d’analyse dépassée ou un antivirus indisponible bloque le fichier. La base de signatures est mise à jour par FreshClam. Cela réduit le risque sans garantir l’absence de toute menace inconnue. ClamAV reste sur le réseau Docker privé, sans port exposé sur Internet.
 
@@ -74,8 +76,8 @@ Cinq tentatives de mot de passe par adresse et par room sont autorisées sur cin
 
 ## Installation et compilation
 
-- Windows : `releases/MemeRoom-Setup-0.6.0.exe`. Le setup propose le dossier d’installation. Il n’est pas signé avec un certificat éditeur ; les avertissements Windows restent possibles.
-- Linux : `releases/MemeRoom-0.6.0-Linux-x86_64.AppImage`. Autoriser l’exécution, puis lancer le fichier. L’overlay utilise X11/XWayland. Sur Arch, les dépendances usuelles sont `fuse2 gtk3 nss alsa-lib xorg-xwayland`. Sans FUSE, utiliser `--appimage-extract-and-run`.
+- Windows : `releases/evil-memeroom-Setup-<version>.exe`. Le setup propose le dossier d’installation. Il n’est pas signé avec un certificat éditeur ; les avertissements Windows restent possibles.
+- Linux : `releases/evil-memeroom-<version>-Linux-x86_64.AppImage`. Autoriser l’exécution, puis lancer le fichier. L’overlay utilise X11/XWayland. Sur Arch, les dépendances usuelles sont `fuse2 gtk3 nss alsa-lib xorg-xwayland`. Sans FUSE, utiliser `--appimage-extract-and-run`.
 - Mac : choisir le ZIP Apple Silicon ou Intel, le décompresser, puis ouvrir `Installer MemeRoom.command` à côté de `MemeRoom.app`. Voir les limites et la procédure de signature Apple dans [DEPLOYER.md](DEPLOYER.md).
 
 Prérequis de développement : Node.js 22.12 ou supérieur, et un bureau compatible Electron.

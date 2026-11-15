@@ -11,7 +11,7 @@ npm start
 
 ## Modifier l’interface
 
-Le site de téléchargement est dans `public/downloads.html`, `downloads.css` et `downloads.mjs`. La télécommande utilise `public/index.html`, `app.mjs` et `styles.css` ; elle est servie par la session privée Electron. Ajouter un module privé nécessite de mettre à jour la liste autorisée de `desktop/control-page.cjs`. Ne pas créer de route HTTP publique pour contourner cette liste.
+Le site de téléchargement est dans `public/downloads.html`, `downloads.css` et `downloads.mjs`. La télécommande utilise `public/index.html`, `app.mjs` (initialisation), les modules `public/app/*.mjs` et `styles.css` ; elle est servie par la session privée Electron. Ajouter un module privé (y compris sous `public/app/` ou `shared/`) nécessite de mettre à jour la liste autorisée de `desktop/control-page.cjs`. Ne pas créer de route HTTP publique pour contourner cette liste.
 
 Le rendu des réactions est partagé dans `public/media-view.mjs`. Le processus principal valide les fichiers et les messages IPC. Garder les pseudos et textes dans `textContent`, sans insertion de HTML envoyé par un participant.
 
@@ -20,7 +20,7 @@ Le rendu des réactions est partagé dans `public/media-view.mjs`. Le processus 
 | Commande | Usage |
 | --- | --- |
 | `npm run check` | Syntaxe de tout le JavaScript du projet |
-| `npm test` | Protocole, accès, stockage et mises à jour |
+| `npm test` | Protocole, accès, stockage, médias, historique, mèmes enregistrés, outils ffmpeg, releases et mises à jour |
 | `node tests/updates-050.e2e.mjs` | Réglages, enregistrement local, téléchargement lent et durée |
 | `npm run test:fullscreen` | Windows : ordre natif des fenêtres plein écran, styles de passage des clics et focus Electron |
 | `node tests/shortcut.e2e.mjs` | Arrêt du contenu par raccourci configurable |
@@ -39,5 +39,7 @@ npm run pack:server
 ```
 
 Exécuter ces commandes à la racine du projet. Sur Linux, appeler directement `bash scripts/build-linux.sh`. Les scripts WSL utilisent un dossier temporaire séparé pour éviter de mélanger les dépendances Windows et Linux. Le packaging Mac préserve les liens symboliques et les permissions ; ne pas remplacer ce ZIP par un outil qui les aplatit.
+
+Les noms des fichiers de release sont définis une seule fois dans `server/release-platforms.mjs` et doivent rester identiques aux `artifactName` de `package.json` (`evil-memeroom-*` ; les anciens `MemeRoom-*` restent servis). La CI (`.github/workflows/ci.yml`) lance `npm run check` et `npm test` à chaque push.
 
 Modifier la version dans `package.json`, `package-lock.json` et la réponse de santé du serveur avant une nouvelle publication. Une version publiée est immuable. Ne pas commit les résultats de compilation.
