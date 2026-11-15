@@ -47,8 +47,18 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
   const rooms = new Map(), sessions = new Map(), media = new Map(), ipBudgets = new Map();
   const store = new RoomStore(dataDir);
   const storage = new MediaStorage(), passwordLimiter = new PasswordLimiter();
-  const makeRoom = (code, name, access = {}) => ({ code, name, isPrivate: true, passwordHash: null, ownerHash: null, accessKey: secret(), ...access, members: new Map(), media: new Map(), bytes: 0, history: [], revision: 0, lastActive: Date.now(), lastBroadcast: 0 });
+  const makeRoom = (code, name, access = {}) => ({ code, name, isPrivate: true, passwordHash: null, ownerHash: null, accessKey: secret(), ...access, members: new Map(), media: new Map(), bytes: 0, history: [], revision: 0, lastActive: access.lastActive ?? Date.now(), lastBroadcast: 0 });
   let totalBytes = 0, uploads = 0;
+  // The oldest room nobody is in: the only one a full server may drop to make space.
+  const oldestIdleRoom = () => { let oldest = null; for (const room of rooms.values()) if (!room.members.size && (!oldest || room.lastActive < oldest.lastActive)) oldest = room; return oldest; };
+  function freeRoomSlot() {
+    if (rooms.size < 100) return;
+    const idle = oldestIdleRoom();
+    if (!idle) throw new Error('Le serveur est plein. Réessayez plus tard.');
+    try { store.remove(idle.code); } catch { throw new Error('Impossible d’enregistrer la room sur le serveur. Vérifiez son stockage.'); }
+    for (const asset of [...idle.media.values()]) removeMedia(asset);
+    rooms.delete(idle.code);
+  }
   function removeMedia(asset) {
     if (!media.delete(asset.id)) return;
     const room = rooms.get(asset.roomCode);
@@ -195,10 +205,10 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
           let code = cleanText(body.code, 20).toUpperCase().replace(/[-\s]/g, '');
           let room, ownerToken;
           if (message.type === 'create') {
-            if (rooms.size >= 100) throw new Error('Le serveur est plein. Réessayez plus tard.');
+            if (rooms.size >= 100 && !oldestIdleRoom()) throw new Error('Le serveur est plein. Réessayez plus tard.');
             const passwordHash = await hashPassword(body.password);
             if (ws.readyState !== WebSocket.OPEN) return;
-            if (rooms.size >= 100) throw new Error('Le serveur est plein. Réessayez plus tard.');
+            freeRoomSlot();
             do { code = roomCode(); } while (rooms.has(code));
             ownerToken = secret();
             room = makeRoom(code, cleanText(body.roomName, 40) || 'Ma room', { isPrivate: body.isPrivate !== false, passwordHash, ownerHash: digest(ownerToken) });
@@ -284,6 +294,7 @@ export function createRoomServer({ host = process.env.HOST || '0.0.0.0', port = 
       if (dataDir) { room.media.clear(); room.bytes = 0; room.history = []; } else rooms.delete(code);
     }
     for (const [ip, budget] of ipBudgets) if (now - budget.start > 60000) ipBudgets.delete(ip);
+    try { store.touch(rooms.values()); } catch (error) { console.error('Unable to save room activity:', error); }
     passwordLimiter.sweep();
   }, Math.min(30000, emptyRoomTtlMs, mediaTtlMs));
   sweep.unref();

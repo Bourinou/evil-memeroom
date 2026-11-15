@@ -8,8 +8,8 @@ import { WebSocket } from 'ws';
 import { createRoomServer } from '../server/index.mjs';
 import { makeMediaSpace } from '../server/media-capacity.mjs';
 let sequence=0;
-async function client(base){
-  const ws=new WebSocket(base.replace('http:','ws:')+'/ws');await once(ws,'open');
+async function client(base,ip){
+  const ws=new WebSocket(base.replace('http:','ws:')+'/ws',ip?{headers:{'X-Forwarded-For':ip}}:undefined);await once(ws,'open');
   const events=[],pending=new Map();ws.on('message',raw=>{const value=JSON.parse(raw);if(value.replyTo&&pending.has(value.replyTo)){const p=pending.get(value.replyTo);pending.delete(value.replyTo);clearTimeout(p.timer);value.ok?p.resolve(value.data):p.reject(new Error(value.error));}else events.push(value);});
   return {ws,events,request(type,data={}){const id=String(++sequence);return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Test timed out')),2000);pending.set(id,{resolve,reject,timer});ws.send(JSON.stringify({id,type,data}));});}};
 }
@@ -65,7 +65,7 @@ test('saved rooms survive an idle expiry and a complete server restart with the 
   await a.request('join',{name:'Alice',code:room.code});
   const disk=JSON.parse(await readFile(path.join(dataDir,'rooms.json'),'utf8'));
   assert.deepEqual(disk.rooms.map(({code,name})=>({code,name})),[{code:room.code,name:'Room permanente'}]);
-  assert.equal(disk.version,2); assert.equal(disk.rooms[0].isPrivate,true);
+  assert.equal(disk.version,3); assert.equal(disk.rooms[0].isPrivate,true);assert.equal(typeof disk.rooms[0].lastActive,'number');
   assert.ok(!JSON.stringify(disk).includes(room.token));
   await server.stop();server=createRoomServer({host:'127.0.0.1',port:0,dataDir});address=await server.start();
   a=await client(`http://127.0.0.1:${address.port}`);const restored=await a.request('join',{name:'Alice',code:room.code});
@@ -103,4 +103,34 @@ test('unexpected upload errors are 500s and full storage carries an explicit sta
 test('health reports the version from package.json',async t=>{
   const base=await fixture(t);const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
   assert.equal((await (await fetch(base+'/api/health')).json()).version,pkg.version);
+});
+const roomCodeAt=i=>'ROOM'+String.fromCharCode(65+Math.floor(i/26))+String.fromCharCode(65+i%26)+'AA';
+const savedRoom=(i,extra={})=>({code:roomCodeAt(i),name:'Room '+i,isPrivate:true,passwordHash:null,ownerHash:null,accessKey:'k'.repeat(43),...extra});
+async function seededServer(t,version,rooms){
+  const dataDir=await mkdtemp(path.join(os.tmpdir(),'memeroom-purge-'));await writeFile(path.join(dataDir,'rooms.json'),JSON.stringify({version,rooms}));
+  const server=createRoomServer({host:'127.0.0.1',port:0,dataDir,trustProxy:true});t.after(()=>server.stop());const address=await server.start();
+  return {dataDir,base:`http://127.0.0.1:${address.port}`};
+}
+const readRooms=async dataDir=>JSON.parse(await readFile(path.join(dataDir,'rooms.json'),'utf8'));
+test('a full server evicts the oldest inactive room and saves the new one',async t=>{
+  const rooms=Array.from({length:100},(_,i)=>savedRoom(i,{lastActive:1000+i}));rooms[50].lastActive=1;
+  const {dataDir,base}=await seededServer(t,3,rooms);const a=await client(base);
+  const created=await a.request('create',{name:'Alice'});
+  const disk=await readRooms(dataDir);assert.equal(disk.version,3);assert.equal(disk.rooms.length,100);
+  assert.ok(!disk.rooms.some(r=>r.code===roomCodeAt(50)));assert.ok(disk.rooms.some(r=>r.code===roomCodeAt(0)));assert.ok(disk.rooms.some(r=>r.code===created.code));
+  await assert.rejects(a.request('join',{name:'Alice',code:roomCodeAt(50)}),/introuvable/);
+});
+test('a full server never evicts a room with members',async t=>{
+  const {dataDir,base}=await seededServer(t,3,Array.from({length:100},(_,i)=>savedRoom(i,{lastActive:1000+i})));
+  const members=[];for(let i=0;i<100;i++){const m=await client(base,`10.1.0.${i}`);await m.request('join',{name:'M'+i,code:roomCodeAt(i)});members.push(m);}
+  const late=await client(base,'10.2.0.1');await assert.rejects(late.request('create',{name:'Late'}),/plein/);
+  assert.equal((await readRooms(dataDir)).rooms.length,100);
+});
+test('rooms.json versions 1 and 2 still load and are saved as version 3',async t=>{
+  for(const [version,room] of [[1,{code:roomCodeAt(1),name:'Ancienne'}],[2,savedRoom(2)]]){
+    const {dataDir,base}=await seededServer(t,version,[room]);const a=await client(base);
+    assert.equal((await a.request('join',{name:'Alice',code:room.code})).code,room.code);
+    await a.request('create',{name:'Alice'});const disk=await readRooms(dataDir);
+    assert.equal(disk.version,3);assert.equal(disk.rooms.length,2);assert.ok(disk.rooms.every(r=>Number.isFinite(r.lastActive)));
+  }
 });

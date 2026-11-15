@@ -89,7 +89,7 @@ test('old rooms keep their code, stay private, and can explicitly acquire a mana
   assert.equal(room.access.unclaimed, true); assert.deepEqual((await (await fetch(f.base + '/api/rooms')).json()).rooms, []);
   const claimed = await first.request('room-settings', { isPrivate: true, passwordAction: 'keep' }); assert.ok(claimed.ownerToken);
   await assert.rejects(other.request('room-settings', { isPrivate: false, passwordAction: 'keep' }), /gestionnaire/);
-  const disk = JSON.parse(await readFile(path.join(dataDir, 'rooms.json'), 'utf8')); assert.equal(disk.version, 2); assert.equal(disk.rooms[0].code, room.code);
+  const disk = JSON.parse(await readFile(path.join(dataDir, 'rooms.json'), 'utf8')); assert.equal(disk.version, 3); assert.equal(disk.rooms[0].code, room.code);
 });
 test('room protection limits guessing and rejects oversized passwords', async t => {
   const f = await fixture(t), owner = await client(f.base), guest = await client(f.base);
