@@ -16,6 +16,43 @@ function sanitizeMemeFilename(name) {
     .replace(/\s+\./g, '.');
 }
 
+const EXT_BY_MIME = {
+  'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp',
+  'video/mp4': '.mp4', 'video/webm': '.webm',
+  'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/ogg': '.ogg'
+};
+const RESERVED_NAMES = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+const MAX_NAME_LENGTH = 120;
+
+let detectMediaPromise;
+const getDetectMedia = () => {
+  if (!detectMediaPromise) detectMediaPromise = import('../server/media.mjs').then(m => m.detectMedia);
+  return detectMediaPromise;
+};
+
+// Build a safe filename: the extension is imposed (`ext`), the sender's one is dropped,
+// reserved Windows names get a `_` prefix, trailing dots/spaces are removed, length is capped.
+// Returns '' when nothing usable remains.
+function buildMemeFilename(name, ext) {
+  let base = sanitizeMemeFilename(name);
+  base = base.slice(0, base.length - path.extname(base).length);
+  base = base.replace(/[. ]+$/, '').replace(/^[. ]+/, '');
+  if (!base) return '';
+  if (RESERVED_NAMES.test(base.split('.')[0])) base = `_${base}`;
+  return base.slice(0, MAX_NAME_LENGTH - ext.length).replace(/[. ]+$/, '') + ext;
+}
+
+async function readHeader(filePath) {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const header = Buffer.alloc(4096);
+    const { bytesRead } = await handle.read(header, 0, 4096, 0);
+    return header.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
 // Low-RAM streaming hash function (64 KB chunks, only 0.06 MB RAM)
 async function hashFileStream(filePath) {
   const hash = crypto.createHash('sha256');
@@ -71,10 +108,10 @@ function createSavedMemes({ memesDir, hashCachePath }) {
 
   // Sync in-memory hash cache with the memes directory:
   // Only hashes new or modified files. Existing files are NEVER re-hashed!
-  async function syncHashCache() {
+  async function syncHashCache(entries) {
     await loadHashCache();
     await fs.mkdir(memesDir, { recursive: true });
-    const entries = await fs.readdir(memesDir, { withFileTypes: true });
+    entries = entries || await fs.readdir(memesDir, { withFileTypes: true });
     const presentFiles = new Set();
     let modified = false;
 
@@ -108,10 +145,19 @@ function createSavedMemes({ memesDir, hashCachePath }) {
     if (modified) persistHashCache();
   }
 
+  // Full folder scan only once; afterwards save/rename/remove update the cache and list() resyncs.
+  let initialSync;
+  const ensureSynced = () => (initialSync ||= syncHashCache().catch(error => { initialSync = null; throw error; }));
+
   async function save(sourceFile, originalName) {
-    await syncHashCache();
+    await ensureSynced();
     const sourceStat = await fs.stat(sourceFile);
     if (!sourceStat.isFile() || sourceStat.size === 0) return null;
+
+    // The extension comes from the detected format, never from the sender's name.
+    const format = (await getDetectMedia())(await readHeader(sourceFile));
+    const ext = format && EXT_BY_MIME[format.mime];
+    if (!ext) return { saved: false, reason: 'unsupported' };
 
     // Stream-hash incoming file in 64 KB chunks
     const sourceHash = await hashFileStream(sourceFile);
@@ -128,13 +174,13 @@ function createSavedMemes({ memesDir, hashCachePath }) {
       }
     }
 
-    const cleanBase = sanitizeMemeFilename(originalName) || `meme_${Date.now()}`;
-    const parsed = path.parse(cleanBase);
-    let finalName = cleanBase;
+    const cleanName = buildMemeFilename(originalName, ext) || `meme_${Date.now()}${ext}`;
+    const stem = cleanName.slice(0, cleanName.length - ext.length);
+    const taken = new Set([...memeHashCache.keys()].map(n => n.toLowerCase()));
+    let finalName = cleanName;
     let counter = 1;
-    const entries = await fs.readdir(memesDir);
-    while (entries.some(e => e.toLowerCase() === finalName.toLowerCase())) {
-      finalName = `${parsed.name} ${counter}${parsed.ext}`;
+    while (taken.has(finalName.toLowerCase()) || await fs.access(path.join(memesDir, finalName)).then(() => true, () => false)) {
+      finalName = `${stem} ${counter}${ext}`;
       counter++;
     }
 
@@ -152,6 +198,7 @@ function createSavedMemes({ memesDir, hashCachePath }) {
   async function list() {
     await fs.mkdir(memesDir, { recursive: true });
     const entries = await fs.readdir(memesDir, { withFileTypes: true });
+    await syncHashCache(entries);
     const eligible = entries.filter(entry => entry.isFile() && !entry.name.startsWith('.') && !entry.name.startsWith('silent_'));
     const items = (await Promise.all(eligible.map(async entry => {
       const ext = path.extname(entry.name).toLowerCase();
@@ -178,10 +225,9 @@ function createSavedMemes({ memesDir, hashCachePath }) {
 
   async function rename(oldName, newName) {
     const safeOld = path.basename(oldName);
-    let safeNew = sanitizeMemeFilename(newName);
+    // The extension never changes on rename; same name rules as save.
+    const safeNew = buildMemeFilename(newName, path.extname(safeOld));
     if (!safeNew) throw new Error('Nom invalide.');
-    const oldExt = path.extname(safeOld).toLowerCase();
-    if (!path.extname(safeNew)) safeNew += oldExt;
     if (safeOld === safeNew) return safeNew;
     const oldPath = path.join(memesDir, safeOld);
     const newPath = path.join(memesDir, safeNew);
