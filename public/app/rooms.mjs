@@ -132,7 +132,7 @@ export async function attemptJoin(currentEpoch, create) {
       const server = resolveServer(state.target.server);
       recordHistory(data.history.map(item => toHistoryItem(item, server)));
     }
-    state.client.rooms = [state.target, ...client.rooms.filter(entry => keyFor(entry) !== keyFor(state.target))];
+    state.client.rooms = [state.target, ...state.client.rooms.filter(entry => keyFor(entry) !== keyFor(state.target))];
     state.client.active = { code: state.target.code, server: state.target.server };
     const saved = await saveClient();
     state.status = saved ? 'Connecté' : 'Connecté · enregistrement local impossible';
