@@ -2,18 +2,18 @@ const { execFile } = require('node:child_process');
 
 // Reassert the window order without activating it or taking input from the game.
 // Exclusive DirectX fullscreen is outside the desktop compositor's control.
-function createOverlayLayer(window, platform = process.platform) {
-  let timer;
+function createOverlayLayer(window, platform = process.platform, exec = execFile) {
+  let timer, warned = false;
   const alive = () => !window.isDestroyed();
   function stop() { clearInterval(timer); timer = undefined; }
   function applyClickThrough() {
     if (!alive()) return;
     try { window.setIgnoreMouseEvents(true); } catch {}
     if (platform === 'linux') {
-      const title = window.getTitle();
-      const script = `import subprocess, ctypes
+      // Passed as argv, never interpolated into the script.
+      const script = `import subprocess, ctypes, sys
 try:
-    out = subprocess.check_output(['xwininfo', '-name', '${title}'], stderr=subprocess.DEVNULL).decode()
+    out = subprocess.check_output(['xwininfo', '-name', sys.argv[1]], stderr=subprocess.DEVNULL).decode()
     for line in out.splitlines():
         if 'Window id:' in line:
             wid = int(line.split()[3], 16)
@@ -28,18 +28,29 @@ try:
             xfixes.XFixesDestroyRegion(disp, ctypes.c_ulong(empty))
             x11.XFlush(disp)
             break
+except FileNotFoundError:
+    sys.exit(3)
 except BaseException:
     pass`;
-      execFile('python3', ['-c', script], { timeout: 1000, stdio: 'ignore' }, () => {});
+      exec('python3', ['-c', script, window.getTitle()], { timeout: 1000 }, (error) => {
+        if (!error || warned) return;
+        if (error.code === 'ENOENT' || error.code === 3) {
+          warned = true;
+          console.warn('Overlay click-through on Linux needs python3 and xwininfo (x11-utils).');
+        }
+      });
     }
   }
-  function refresh() {
-    if (!alive() || !window.isVisible()) { stop(); return; }
+  // Order only: runs on the timer, so it must stay cheap.
+  function reassertOrder() {
+    if (!alive() || !window.isVisible()) { stop(); return false; }
     if (platform === 'linux') window.setAlwaysOnTop(true);
     else window.setAlwaysOnTop(true, 'screen-saver');
     window.moveTop();
-    applyClickThrough();
+    return true;
   }
+  // Explicit refresh (show, bounds change): order plus the X11 click-through shape.
+  function refresh() { if (reassertOrder()) applyClickThrough(); }
   window.setIgnoreMouseEvents(true, platform === 'linux' ? undefined : { forward: true });
   if (platform !== 'linux') window.setFocusable(false);
   if (platform === 'darwin') window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -52,8 +63,7 @@ except BaseException:
       if (!alive()) return;
       window.showInactive();
       refresh();
-      applyClickThrough();
-      if (!timer) { timer = setInterval(refresh, 500); timer.unref(); }
+      if (!timer) { timer = setInterval(reassertOrder, 500); timer.unref(); }
     },
     hide() { stop(); if (alive()) window.hide(); }
   };
