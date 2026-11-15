@@ -253,8 +253,9 @@ async function displayReaction(payload, test = false) {
         if (settings.saveReceived !== false && !isSilentAudio) {
           try {
             const saveRes = await savedMemes.save(file, assetName);
-            if (saveRes.saved && control && !control.isDestroyed()) {
-              control.webContents.send('savedMemes:updated');
+            // Tell the control page which asset became which saved file (also for a duplicate).
+            if (saveRes?.name && control && !control.isDestroyed()) {
+              control.webContents.send('savedMemes:updated', { id: reaction[key].id, name: saveRes.name });
             }
           } catch (e) {
             console.error('Erreur sauvegarde mème:', e);

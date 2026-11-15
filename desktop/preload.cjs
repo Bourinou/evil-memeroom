@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('memeroom', {
   trimMedia: options => ipcRenderer.invoke('media:trim', options),
   extractAudio: options => ipcRenderer.invoke('media:extractAudio', options),
   saveHistory: list => ipcRenderer.invoke('history:save', list),
-  onSavedMemesUpdated: callback => { ipcRenderer.on('savedMemes:updated', () => callback()); },
+  onSavedMemesUpdated: callback => { ipcRenderer.on('savedMemes:updated', (_event, saved) => callback(saved)); },
   onSettings: callback => { ipcRenderer.on('settings:changed', (_event, value) => callback(value)); },
   onError: callback => { ipcRenderer.on('overlay:error', (_event, value) => callback(value)); }
 });

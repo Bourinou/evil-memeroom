@@ -1,5 +1,5 @@
 import { hasTimedMedia } from '../shared/protocol.mjs';
-import { mergeHistory } from '../shared/history.mjs';
+import { mergeHistory, savedFileName, setSavedName, renameSavedName, removeSavedName } from '../shared/history.mjs';
 import { $, native, node, state, notify, resolveServer, SAVED_MIME_TYPES } from './state.mjs';
 import { attach, uploadFiles, renderAttachments, renderSend, renderSubtitles, showPreview } from './composer.mjs';
 import { showTab } from '../app.mjs';
@@ -30,8 +30,43 @@ export async function loadHistory(fileList) {
 function saveHistory() {
   native.saveHistory(state.messageHistory).catch(() => {});
 }
+// Saved file names announced by the main process before their item reached the history.
+const pendingSaved = new Map(); // asset id -> saved file name
+const sameList = (a, b) => a.length === b.length && a.every((item, index) => item === b[index]);
+function updateSavedNames(next) {
+  if (sameList(next, state.messageHistory)) return;
+  state.messageHistory = next;
+  saveHistory();
+  if (state.currentTab === 'history') renderHistory();
+}
+function forgetPending(name) {
+  for (const [id, saved] of pendingSaved) if (saved === name) pendingSaved.delete(id);
+}
+// The main process saved asset `id` as file `name` (new file or duplicate of an existing one).
+function markSaved({ id, name } = {}) {
+  if (typeof id !== 'string' || typeof name !== 'string' || !name) return;
+  if (state.messageHistory.some(item => item.media?.id === id || item.audio?.id === id)) {
+    updateSavedNames(setSavedName(state.messageHistory, id, name));
+    return;
+  }
+  pendingSaved.set(id, name);
+  if (pendingSaved.size > 200) pendingSaved.delete(pendingSaved.keys().next().value);
+}
+native.onSavedMemesUpdated(markSaved);
+export function savedMemeRenamed(oldName, newName) {
+  forgetPending(oldName);
+  updateSavedNames(renameSavedName(state.messageHistory, oldName, newName));
+}
+export function savedMemeRemoved(name) {
+  forgetPending(name);
+  updateSavedNames(removeSavedName(state.messageHistory, name));
+}
 // Add items (live events or server history); incoming items win over stored duplicates.
 export function recordHistory(items) {
+  for (const [id, name] of pendingSaved) {
+    const named = setSavedName(items, id, name);
+    if (!sameList(named, items)) { items = named; pendingSaved.delete(id); }
+  }
   state.messageHistory = mergeHistory(items, state.messageHistory);
   saveHistory();
   updateHistoryBadge();
@@ -59,11 +94,12 @@ async function fetchHistoryFile(asset, server, fallbackName, fallbackMime) {
       }
     } catch {}
   }
-  if (asset.name) {
+  const savedName = savedFileName(asset);
+  if (savedName) {
     try {
-      const data = await native.readSavedMeme(asset.name);
-      const ext = asset.name.slice(asset.name.lastIndexOf('.')).toLowerCase();
-      return new File([data.buffer], asset.name, { type: asset.mime || SAVED_MIME_TYPES[ext] || fallbackMime });
+      const data = await native.readSavedMeme(savedName);
+      const ext = savedName.slice(savedName.lastIndexOf('.')).toLowerCase();
+      return new File([data.buffer], savedName, { type: asset.mime || SAVED_MIME_TYPES[ext] || fallbackMime });
     } catch {}
   }
   return null;
@@ -136,9 +172,9 @@ export function renderHistory() {
         img.loading = 'lazy';
         let fallbackDone = false;
         img.onerror = () => {
-          if (!fallbackDone && item.media?.name) {
+          if (!fallbackDone && savedFileName(item.media)) {
             fallbackDone = true;
-            img.src = `/saved-memes/${encodeURIComponent(item.media.name)}`;
+            img.src = `/saved-memes/${encodeURIComponent(savedFileName(item.media))}`;
             return;
           }
           img.remove();
@@ -154,9 +190,9 @@ export function renderHistory() {
         vid.preload = 'metadata';
         let vidFallbackDone = false;
         vid.onerror = () => {
-          if (!vidFallbackDone && item.media?.name) {
+          if (!vidFallbackDone && savedFileName(item.media)) {
             vidFallbackDone = true;
-            vid.src = `/saved-memes/${encodeURIComponent(item.media.name)}#t=0.001`;
+            vid.src = `/saved-memes/${encodeURIComponent(savedFileName(item.media))}#t=0.001`;
             return;
           }
           vid.remove();

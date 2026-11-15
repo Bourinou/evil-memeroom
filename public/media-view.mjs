@@ -1,6 +1,9 @@
 import { hasTimedMedia, LIMITS, cleanText, applyReactionMeta } from '../shared/protocol.mjs';
+import { savedFileName } from '../shared/history.mjs';
 
-export function mountReaction(container, reaction, { volume = 0, autoplay = false, still = false, onReady = () => {}, onDone = () => {}, onError = () => {}, onProgress = () => {} } = {}) {
+// `savedFallback`: when the server copy is gone, try the saved file (control page only; the
+// overlay runs from file:// where /saved-memes/ does not exist).
+export function mountReaction(container, reaction, { volume = 0, autoplay = false, still = false, savedFallback = false, onReady = () => {}, onDone = () => {}, onError = () => {}, onProgress = () => {} } = {}) {
   applyReactionMeta(reaction);
   const root = document.createElement('div'); root.className = 'reaction-view'; root.hidden = autoplay;
   const players = [], visuals = [], urls = [], abort = new AbortController();
@@ -36,9 +39,9 @@ export function mountReaction(container, reaction, { volume = 0, autoplay = fals
         response = await fetch(url, { signal:AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]) });
       } catch {}
       if (!response || !response.ok) {
-        if (asset.name) {
+        if (savedFallback && savedFileName(asset)) {
           try {
-            const fallbackResp = await fetch(`/saved-memes/${encodeURIComponent(asset.name)}`, { signal:AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]) });
+            const fallbackResp = await fetch(`/saved-memes/${encodeURIComponent(savedFileName(asset))}`, { signal:AbortSignal.any([abort.signal, AbortSignal.timeout(LIMITS.transferTimeoutMs)]) });
             if (fallbackResp.ok) response = fallbackResp;
           } catch {}
         }

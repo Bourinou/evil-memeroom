@@ -448,7 +448,7 @@ $('#clear-subtitles').addEventListener('click', () => { state.cues = []; renderS
 export function showPreview(reaction) {
   applyReactionMeta(reaction);
   $('#preview-dialog').showModal(); preview?.destroy(); $('#preview-loading').hidden = false;
-  preview = mountReaction($('#large-preview'), reaction, { volume:state.settings.volume, autoplay:true, onReady:() => { $('#preview-loading').hidden = true; }, onDone:() => $('#preview-dialog').close(), onError:() => { $('#preview-dialog').close(); notify('Impossible de lire ce fichier.', true); } });
+  preview = mountReaction($('#large-preview'), reaction, { volume:state.settings.volume, autoplay:true, savedFallback:true, onReady:() => { $('#preview-loading').hidden = true; }, onDone:() => $('#preview-dialog').close(), onError:() => { $('#preview-dialog').close(); notify('Impossible de lire ce fichier.', true); } });
 }
 $('#preview-play').addEventListener('click', () => showPreview(currentReaction()));
 $('#preview-dialog').addEventListener('close', () => { preview?.destroy(); preview = null; });

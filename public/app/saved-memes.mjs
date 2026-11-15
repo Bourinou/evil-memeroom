@@ -2,6 +2,7 @@ import { normalizeSearch, getGifDuration } from '../shared/protocol.mjs';
 import { $, native, node, state, notify, SAVED_MIME_TYPES } from './state.mjs';
 import { uploadFiles, cacheGifInfo, showPreview } from './composer.mjs';
 import { extractAudioFromFileOrBuffer } from './upload.mjs';
+import { savedMemeRenamed, savedMemeRemoved } from './history.mjs';
 import { showTab } from '../app.mjs';
 
 let savedMemes = [];
@@ -49,7 +50,8 @@ $('#rename-form')?.addEventListener('submit', async e => {
     return;
   }
   try {
-    await native.renameSavedMeme(memeToRename.name, newName);
+    const finalName = await native.renameSavedMeme(memeToRename.name, newName);
+    savedMemeRenamed(memeToRename.name, finalName);
     dialog?.close();
     notify('Mème renommé.');
     await loadSavedMemes();
@@ -189,6 +191,7 @@ function renderSavedMemes() {
       if (!confirm(`Supprimer « ${meme.name} » ?`)) return;
       try {
         await native.deleteSavedMeme(meme.name);
+        savedMemeRemoved(meme.name);
         savedMemes = savedMemes.filter(item => item.name !== meme.name);
         renderSavedMemes();
         notify(`« ${meme.name} » supprimé.`);
