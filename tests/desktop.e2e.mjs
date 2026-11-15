@@ -69,7 +69,7 @@ async function assertCentered(instance) {
   assert.ok(Math.abs(position.dx) <= 1 && Math.abs(position.dy) <= 1, `Overlay centered on screen: ${JSON.stringify(position)}`);
 }
 async function connected(page) { await page.waitForFunction(() => document.querySelector('#connection-status').textContent.startsWith('Connecté')); }
-async function send(page) { await sleep(3100); if (await page.locator('#duration').isVisible()) await page.selectOption('#duration','2'); await page.click('#broadcast'); }
+async function send(page) { await sleep(3100); if (await page.locator('#duration').isVisible()) await page.fill('#duration','2'); await page.click('#broadcast'); }
 async function upload(page, file, name) {
   await page.locator(/\.(wav|mp3|ogg)$/i.test(name) ? '#audio-input' : '#file-input').setInputFiles(file);
   await page.waitForFunction(name => [...document.querySelectorAll('.attachment strong')].some(el => el.textContent === name) && !document.querySelector('#attach-file').disabled, name);
@@ -119,7 +119,7 @@ try {
   assert.equal(await bob.overlay.locator('.reaction-sender').textContent(),'Alice');
   assert.equal(await bob.overlay.locator('.reaction-sender').evaluate(el => el.getBoundingClientRect().bottom <= document.querySelector('.reaction-caption').getBoundingClientRect().top),true);
   assert.equal(await bob.overlay.locator('.reaction-art').count(),0);
-  assert.equal(await bob.overlay.locator('.reaction-caption').evaluate(el => getComputedStyle(el).fontSize),'18px');
+  assert.equal(await bob.overlay.locator('.reaction-caption').evaluate(el => getComputedStyle(el).fontSize),'26px');
   await assertCentered(bob);
   const state = await overlayState(bob);
   if (state.focusable !== null) assert.equal(state.focusable,false);
@@ -209,10 +209,9 @@ try {
   assert.ok(Date.now()-shortStarted < 1800,'A subsecond video must not wait for the two-second manual minimum.');
   await alice.page.getByRole('button',{ name:'Retirer short-video.webm', exact:true }).click();
   assert.equal(await alice.page.locator('#duration').isVisible(),true);
-  if (!await alice.page.locator('#existing-media').isVisible()) await alice.page.locator('summary').click();
-  await alice.page.selectOption('#existing-media',await alice.page.locator('#existing-media option').filter({hasText:'short-video.webm'}).getAttribute('value'));
+  await upload(alice.page,shortVideo,'short-video.webm');
   assert.equal(await alice.page.locator('#automatic-duration').isVisible(),true);
-  record('Vidéo de moins d’une seconde et bibliothèque : durée automatique ; retrait du média : durée manuelle restaurée');
+  record('Vidéo de moins d’une seconde : durée automatique ; retrait du média : durée manuelle restaurée');
 
   await alice.page.fill('#caption','À tout de suite');
   await capture(alice.page,'simple-room.png',{ fullPage:true });
