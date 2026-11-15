@@ -1,7 +1,7 @@
 import { hasTimedMedia, LIMITS, parseSubtitles, getGifDuration, embedReactionMeta, applyReactionMeta } from '../shared/protocol.mjs';
 import { mountReaction } from '../media-view.mjs';
-import { $, node, state, notify, resolveServer } from './state.mjs';
-import { extractAudioFromFileOrBuffer, uploadMedia, uploadSilentAudio } from './upload.mjs';
+import { $, native, node, state, notify, resolveServer } from './state.mjs';
+import { assetRef, runNativeMedia, uploadMedia, uploadSilentAudio } from './upload.mjs';
 import { renderLibrary } from './rooms.mjs';
 import { openTrimDialog } from './trim.mjs';
 import { showTab } from '../app.mjs';
@@ -209,11 +209,7 @@ export function renderAttachments() {
             let audioAsset = asset;
             if (asset.kind === 'video') {
               notify('Extraction du son de la vidéo…');
-              const mediaUrl = new URL(asset.url, resolveServer(state.target?.server || 'local')).href;
-              const resp = await fetch(mediaUrl);
-              const arrayBuf = await resp.arrayBuffer();
-              const audioFile = await extractAudioFromFileOrBuffer(asset.name, arrayBuf);
-              audioAsset = await uploadMedia(audioFile, state.epoch, state.room);
+              audioAsset = await runNativeMedia(native.extractAudio, { asset: assetRef(asset) });
               audioAsset._originalVideo = asset;
               if (!state.library.some(a => a.id === audioAsset.id)) state.library.push(audioAsset);
             }
@@ -315,11 +311,7 @@ $('#send-form').addEventListener('submit', async event => {
   try {
     if (state.audio && state.audio.kind === 'video') {
       notify('Préparation de la piste audio…');
-      const mediaUrl = new URL(state.audio.url, resolveServer(state.target?.server || 'local')).href;
-      const resp = await fetch(mediaUrl);
-      const arrayBuf = await resp.arrayBuffer();
-      const audioFile = await extractAudioFromFileOrBuffer(state.audio.name, arrayBuf);
-      const audioAsset = await uploadMedia(audioFile, state.epoch, state.room);
+      const audioAsset = await runNativeMedia(native.extractAudio, { asset: assetRef(state.audio) });
       audioAsset._originalVideo = state.audio;
       if (!state.library.some(a => a.id === audioAsset.id)) state.library.push(audioAsset);
       state.audio = audioAsset;
@@ -355,39 +347,53 @@ export function attach(asset, asAudio = false) {
   renderAttachments();
   renderSend();
 }
-export async function uploadFiles(files, asAudio = false) {
+// Each producer returns { data, gifInfo?, name } (data = asset imported on the server).
+async function importAll(producers, asAudio) {
   if (importing) return;
   if (!state.connected || !state.room) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }
-  if (files.length > 2) notify('2 fichiers maximum : seuls les 2 premiers sont ajoutés.');
   importing = true; renderSend(); const currentEpoch = state.epoch, currentRoom = state.room;
   try {
-    for (let file of files.slice(0, 2)) {
-      if (asAudio && (file.type.startsWith('video/') || /\.(mp4|webm|mkv|mov)$/i.test(file.name))) {
-        notify('Extraction du son de la vidéo…');
-        const arrayBuf = await file.arrayBuffer();
-        file = await extractAudioFromFileOrBuffer(file.name, arrayBuf);
-      }
-      let gifInfo = file._gifInfo || null;
-      if (!gifInfo && !asAudio && (file.type === 'image/gif' || /\.gif$/i.test(file.name))) {
-        try {
-          const arrayBuf = await file.arrayBuffer();
-          gifInfo = getGifDuration(arrayBuf);
-        } catch {}
-      }
-      if (file.size > LIMITS.uploadBytes) throw new Error(`${file.name} dépasse 1 Go.`);
-      const data = await uploadMedia(file, currentEpoch, currentRoom);
+    for (const produce of producers) {
+      const { data, gifInfo, name } = await produce(currentEpoch, currentRoom);
       if (currentEpoch !== state.epoch || state.room !== currentRoom) return;
       if (gifInfo) {
         data.gifDuration = gifInfo.durationSec;
         data.gifFrameCount = gifInfo.frameCount;
         cacheGifInfo(data, gifInfo);
-        cacheGifInfo({ id: data.id, url: data.url, name: file.name }, gifInfo);
+        cacheGifInfo({ id: data.id, url: data.url, name }, gifInfo);
       }
       if (!state.library.some(asset => asset.id === data.id)) state.library.push(data);
       attach(data, asAudio); renderLibrary();
     }
   } catch (error) { notify(error.name === 'TimeoutError' ? 'L’import a pris trop de temps.' : error.message, true); }
   finally { importing = false; renderSend(); }
+}
+export function uploadFiles(files, asAudio = false) {
+  if (files.length > 2) notify('2 fichiers maximum : seuls les 2 premiers sont ajoutés.');
+  return importAll(files.slice(0, 2).map(file => async (currentEpoch, currentRoom) => {
+    if (asAudio && (file.type.startsWith('video/') || /\.(mp4|webm|mkv|mov)$/i.test(file.name))) {
+      notify('Extraction du son de la vidéo…');
+      const filePath = native.pathForFile(file);
+      if (!filePath) throw new Error('Fichier introuvable.');
+      return { data: await runNativeMedia(native.extractAudio, { filePath }, currentEpoch, currentRoom), name: file.name };
+    }
+    let gifInfo = null;
+    if (!asAudio && (file.type === 'image/gif' || /\.gif$/i.test(file.name))) {
+      try {
+        gifInfo = getGifDuration(await file.arrayBuffer());
+      } catch {}
+    }
+    if (file.size > LIMITS.uploadBytes) throw new Error(`${file.name} dépasse 1 Go.`);
+    return { data: await uploadMedia(file, currentEpoch, currentRoom), gifInfo, name: file.name };
+  }), asAudio);
+}
+// Saved memes are read by the main process (no bytes in the page); audioOnly extracts the sound of a saved video.
+export function importSavedMeme(name, audioOnly = false) {
+  return importAll([async (currentEpoch, currentRoom) => {
+    if (audioOnly) return { data: await runNativeMedia(native.extractAudio, { savedName: name }, currentEpoch, currentRoom), name };
+    const { asset, gifInfo } = await runNativeMedia(native.uploadSavedMeme, { name }, currentEpoch, currentRoom);
+    return { data: asset, gifInfo, name };
+  }], audioOnly);
 }
 $('#attach-file').addEventListener('click', () => {
   if (!state.connected) { notify('Sélectionnez une room avant d’ajouter un fichier.'); return; }

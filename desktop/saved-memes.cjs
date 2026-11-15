@@ -268,7 +268,9 @@ function createSavedMemes({ memesDir, hashCachePath }) {
     return { name: safeName, bytes: buf.byteLength, buffer: buf };
   }
 
-  return { sanitizeFilename: sanitizeMemeFilename, save, list, rename, remove, read };
+  const pathFor = name => path.join(memesDir, path.basename(name));
+
+  return { sanitizeFilename: sanitizeMemeFilename, save, list, rename, remove, read, pathFor };
 }
 
 module.exports = { createSavedMemes, sanitizeMemeFilename };

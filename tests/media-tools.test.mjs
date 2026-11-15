@@ -34,3 +34,18 @@ test('runFfmpeg passes timeout and windowsHide', async () => {
   await runFfmpeg('ff', ['x'], async (bin, args, opts) => { seen = { bin, args, opts }; });
   assert.deepEqual(seen, { bin: 'ff', args: ['x'], opts: { windowsHide: true, timeout: FFMPEG_TIMEOUT_MS } });
 });
+
+test('uploadWithRetry retries 429 up to 3 attempts, not other errors', async () => {
+  const { uploadWithRetry } = require('../desktop/media-tools.cjs');
+  let calls = 0;
+  const busy = Object.assign(new Error('busy'), { status: 429 });
+  const ok = await uploadWithRetry(async () => { if (++calls < 3) throw busy; return 'ok'; }, async () => {});
+  assert.equal(ok, 'ok');
+  assert.equal(calls, 3);
+  calls = 0;
+  await assert.rejects(uploadWithRetry(async () => { calls++; throw busy; }, async () => {}), /busy/);
+  assert.equal(calls, 3);
+  calls = 0;
+  await assert.rejects(uploadWithRetry(async () => { calls++; throw new Error('x'); }, async () => {}), /x/);
+  assert.equal(calls, 1);
+});

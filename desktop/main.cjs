@@ -23,7 +23,7 @@ const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
 const { CONTROL_URL, installControlPage } = require('./control-page.cjs');
-const { downloadAsset } = require('./media-files.cjs');
+const { downloadAsset, uploadAsset } = require('./media-files.cjs');
 const { createSavedMemes } = require('./saved-memes.cjs');
 const { createMediaTools } = require('./media-tools.cjs');
 const { createOverlayLayer } = require('./overlay-layer.cjs');
@@ -39,7 +39,7 @@ const MEMEROOM_DIR = path.join(os.homedir(), 'evil-memeroom');
 fs.mkdir(MEMEROOM_DIR, { recursive: true }).catch(() => {});
 
 const savedMemes = createSavedMemes({ memesDir: MEMEROOM_DIR, hashCachePath: () => path.join(app.getPath('userData'), 'hashes.json') });
-const mediaTools = createMediaTools({ isPackaged: app.isPackaged });
+const mediaTools = createMediaTools({ isPackaged: app.isPackaged, downloadAsset, uploadAsset, savedMemePath: savedMemes.pathFor });
 
 // Overlay placement and always-on-top windows require X11, including through XWayland.
 if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
@@ -375,7 +375,9 @@ if (singleInstance) app.whenReady().then(async () => {
   });
   ipcMain.handle('savedMemes:read', (event, name) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return savedMemes.read(name); });
   ipcMain.handle('media:extractAudio', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.extractAudio(options); });
+  // Media never crosses IPC: the renderer names a source (server asset, saved meme or dropped file path); the main process downloads, runs ffmpeg and imports the result.
   ipcMain.handle('media:trim', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.trim(options); });
+  ipcMain.handle('savedMemes:upload', (event, options) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return mediaTools.uploadSavedMeme(options); });
   ipcMain.handle('settings:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveSettings(value); });
   ipcMain.handle('shortcut:save', (event, value) => { if (!trustedControl(event)) throw new Error('Accès refusé.'); return saveSettings({ ...settings, dismissShortcut: value }, true); });
   ipcMain.handle('shortcut:record', (event, active) => {

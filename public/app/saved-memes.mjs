@@ -1,7 +1,6 @@
-import { normalizeSearch, getGifDuration } from '../shared/protocol.mjs';
-import { $, native, node, state, notify, SAVED_MIME_TYPES } from './state.mjs';
-import { uploadFiles, cacheGifInfo, showPreview } from './composer.mjs';
-import { extractAudioFromFileOrBuffer } from './upload.mjs';
+import { normalizeSearch } from '../shared/protocol.mjs';
+import { $, native, node, state, notify } from './state.mjs';
+import { importSavedMeme, showPreview } from './composer.mjs';
 import { savedMemeRenamed, savedMemeRemoved } from './history.mjs';
 import { showTab } from '../app.mjs';
 
@@ -139,19 +138,8 @@ function renderSavedMemes() {
       e.stopPropagation();
       if (!state.connected || !state.room) { notify('Rejoignez une room avant d’insérer un mème.'); return; }
       try {
-        const fileData = await native.readSavedMeme(meme.name);
-        const ext = meme.name.slice(meme.name.lastIndexOf('.')).toLowerCase();
-        const mime = SAVED_MIME_TYPES[ext] || 'application/octet-stream';
-        const file = new File([fileData.buffer], meme.name, { type: mime });
-        if (ext === '.gif') {
-          const info = getGifDuration(fileData.buffer);
-          if (info) {
-            file._gifInfo = info;
-            cacheGifInfo({ name: meme.name }, info);
-          }
-        }
         showTab(false);
-        await uploadFiles([file]);
+        await importSavedMeme(meme.name);
       } catch (err) { notify(`Impossible de charger le fichier : ${err.message}`, true); }
     });
     let insertAudioBtn = null;
@@ -165,10 +153,8 @@ function renderSavedMemes() {
         insertAudioBtn.disabled = true;
         try {
           notify('Extraction du son de la vidéo…');
-          const fileData = await native.readSavedMeme(meme.name);
-          const audioFile = await extractAudioFromFileOrBuffer(meme.name, fileData.buffer);
           showTab(false);
-          await uploadFiles([audioFile], true);
+          await importSavedMeme(meme.name, true);
         } catch (err) {
           notify(`Impossible d’extraire l’audio : ${err.message}`, true);
         } finally {

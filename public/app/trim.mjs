@@ -1,7 +1,6 @@
-import { LIMITS } from '../shared/protocol.mjs';
 import { $, native, state, notify, resolveServer } from './state.mjs';
 import { renderSend, renderAttachments } from './composer.mjs';
-import { uploadMedia } from './upload.mjs';
+import { assetRef, runNativeMedia } from './upload.mjs';
 import { renderLibrary } from './rooms.mjs';
 
 let trimAsset = null, trimTarget = null;
@@ -228,22 +227,12 @@ $('#trim-apply').addEventListener('click', async () => {
   applyBtn.disabled = true;
   applyBtn.textContent = 'Découpe en cours…';
   try {
-    const mediaUrl = new URL(trimAsset.url, resolveServer(state.target.server)).href;
-    const resp = await fetch(mediaUrl);
-    const arrayBuf = await resp.arrayBuffer();
-    const trimmed = await native.trimMedia({
-      name: trimAsset.name,
-      buffer: new Uint8Array(arrayBuf),
+    const uploaded = await runNativeMedia(native.trimMedia, {
+      asset: assetRef(trimAsset),
       start: trimStart,
       end: trimEnd,
       asAudio: trimTarget === 'audio'
     });
-    const mime = trimmed.mime || (trimTarget === 'audio' ? (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg') : (trimAsset.mime || (trimAsset.kind === 'video' ? (trimmed.name.endsWith('.webm') ? 'video/webm' : 'video/mp4') : (trimmed.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg'))));
-    const blob = new Blob([trimmed.buffer], { type: mime });
-    const trimmedFile = new File([blob], trimmed.name, { type: mime });
-
-    if (trimmedFile.size > LIMITS.uploadBytes) throw new Error(`${trimmedFile.name} dépasse 1 Go.`);
-    const uploaded = await uploadMedia(trimmedFile, state.epoch, state.room);
     uploaded.isTrimmed = true;
     if (!state.library.some(a => a.id === uploaded.id)) state.library.push(uploaded);
     if (trimTarget === 'visual') state.visual = uploaded;

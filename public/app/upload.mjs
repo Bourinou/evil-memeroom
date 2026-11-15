@@ -29,14 +29,17 @@ function createSilentWavBlob(seconds) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-export async function extractAudioFromFileOrBuffer(name, arrayBuffer) {
-  const result = await native.extractAudio({
-    name,
-    buffer: new Uint8Array(arrayBuffer)
-  });
-  const mime = result.mime || (result.name.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
-  const blob = new Blob([result.buffer], { type: mime });
-  return new File([blob], result.name, { type: mime });
+// Fields downloadAsset needs; keeps the IPC payload small.
+export const assetRef = ({ id, url, kind, name, bytes }) => ({ id, url, kind, name, bytes });
+
+// Runs a main-process media operation (`native.extractAudio`, `native.trimMedia`, `native.uploadSavedMeme`):
+// the main process downloads the source, runs ffmpeg and imports the result, so no media bytes cross IPC.
+// The result is dropped if the room changed meanwhile, as in uploadMedia.
+export async function runNativeMedia(operation, options, currentEpoch = state.epoch, currentRoom = state.room) {
+  if (!currentRoom || currentEpoch !== state.epoch || state.room !== currentRoom) throw new Error('Connexion interrompue.');
+  const result = await operation({ ...options, server: resolveServer(state.target.server), token: currentRoom.token });
+  if (currentEpoch !== state.epoch || state.room !== currentRoom) throw new Error('Connexion interrompue.');
+  return result;
 }
 
 export async function uploadMedia(file, currentEpoch, currentRoom) {

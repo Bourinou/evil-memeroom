@@ -57,54 +57,89 @@ function trimArgs(inputPath, outputPath, start, duration, mode) {
   }
 }
 
-function createMediaTools({ isPackaged }) {
-  async function extractAudio({ name, buffer }) {
-    const rawName = path.basename(name || 'media');
-    const baseName = safeBaseName(name);
-    const ext = path.extname(rawName).toLowerCase() || '.mp4';
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-audio-'));
-    const inputPath = path.join(tempDir, `input${ext}`);
-    const outputPathMp3 = path.join(tempDir, `${baseName}.mp3`);
+const UPLOAD_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1000;
+
+// Same policy as the page's uploadMedia: retry on 429 only.
+async function uploadWithRetry(upload, sleep = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  for (let attempt = 0; ; attempt++) {
     try {
-      await fs.writeFile(inputPath, Buffer.from(buffer));
-      const ffmpegBin = resolveFfmpeg(isPackaged);
-
-      try {
-        await runFfmpeg(ffmpegBin, extractArgs(inputPath, outputPathMp3, 'mp3'));
-      } catch (mp3Err) {
-        console.warn('ffmpeg mp3 extraction failed, trying wav:', mp3Err.message);
-        const outputPathWav = path.join(tempDir, `${baseName}.wav`);
-        try {
-          await runFfmpeg(ffmpegBin, extractArgs(inputPath, outputPathWav, 'wav'));
-          const wavBytes = await fs.readFile(outputPathWav);
-          return { name: `${baseName}.wav`, buffer: wavBytes, mime: 'audio/wav', size: wavBytes.length };
-        } catch (wavErr) {
-          console.warn('ffmpeg wav extraction failed:', wavErr.message);
-          throw new Error('Cette vidéo ne contient pas de piste audio exploitable.');
-        }
-      }
-
-      const mp3Bytes = await fs.readFile(outputPathMp3);
-      return { name: `${baseName}.mp3`, buffer: mp3Bytes, mime: 'audio/mpeg', size: mp3Bytes.length };
-    } finally {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      return await upload();
+    } catch (error) {
+      if (error.status !== 429 || attempt >= UPLOAD_ATTEMPTS - 1) throw error;
+      await sleep(RETRY_DELAY_MS);
     }
   }
+}
 
-  async function trim({ name, buffer, start, end, asAudio = false }) {
-    validateRange(start, end);
-    const rawName = path.basename(name || 'media');
-    const baseName = safeBaseName(name);
-    const ext = path.extname(rawName).toLowerCase() || '.mp4';
-    const safeName = asAudio ? `${baseName}.mp3` : (rawName.startsWith('-') ? `${baseName}${ext}` : rawName);
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'evil-trim-'));
-    const inputPath = path.join(tempDir, `input${ext}`);
-    const outputPath = path.join(tempDir, `trimmed_${safeName}`);
-    try {
-      await fs.writeFile(inputPath, Buffer.from(buffer));
+async function withTempDir(prefix, fn) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  try {
+    return await fn(tempDir);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// downloadAsset / uploadAsset come from media-files.cjs; savedMemePath(name) from saved-memes.cjs.
+// Every operation takes a source (`asset`, `savedName` or `filePath`) plus `server` and `token`,
+// works on disk and returns the asset imported on the server: no media buffer crosses IPC.
+function createMediaTools({ isPackaged, downloadAsset, uploadAsset, savedMemePath }) {
+  async function acquireInput(source, tempDir) {
+    const { asset, savedName, filePath, server } = source;
+    if (asset) {
+      const name = String(asset.name || 'media');
+      const ext = path.extname(path.basename(name)).toLowerCase() || '.mp4';
+      const inputPath = path.join(tempDir, `input${ext}`);
+      await downloadAsset(asset, server, inputPath);
+      return { inputPath, name, ext };
+    }
+    const target = savedName ? savedMemePath(savedName) : filePath;
+    if (typeof target !== 'string' || !path.isAbsolute(target) || !(await fs.stat(target)).isFile()) throw new Error('Fichier introuvable.');
+    const name = path.basename(target);
+    return { inputPath: target, name, ext: path.extname(name).toLowerCase() || '.mp4' };
+  }
+
+  async function importFile(file, name, { server, token }) {
+    const { size } = await fs.stat(file);
+    return uploadWithRetry(() => uploadAsset(file, { name, bytes: size }, server, token));
+  }
+
+  async function extractAudio(source) {
+    return withTempDir('evil-audio-', async tempDir => {
+      const { inputPath, name } = await acquireInput(source, tempDir);
+      const baseName = safeBaseName(name);
+      const outputPathMp3 = path.join(tempDir, `${baseName}.mp3`);
       const ffmpegBin = resolveFfmpeg(isPackaged);
+      try {
+        await runFfmpeg(ffmpegBin, extractArgs(inputPath, outputPathMp3, 'mp3'));
+        return await importFile(outputPathMp3, `${baseName}.mp3`, source);
+      } catch (mp3Err) {
+        if (mp3Err.status) throw mp3Err;
+        console.warn('ffmpeg mp3 extraction failed, trying wav:', mp3Err.message);
+      }
+      const outputPathWav = path.join(tempDir, `${baseName}.wav`);
+      try {
+        await runFfmpeg(ffmpegBin, extractArgs(inputPath, outputPathWav, 'wav'));
+      } catch (wavErr) {
+        console.warn('ffmpeg wav extraction failed:', wavErr.message);
+        throw new Error('Cette vidéo ne contient pas de piste audio exploitable.');
+      }
+      return importFile(outputPathWav, `${baseName}.wav`, source);
+    });
+  }
+
+  async function trim(source) {
+    const { start, end, asAudio = false } = source;
+    validateRange(start, end);
+    return withTempDir('evil-trim-', async tempDir => {
+      const { inputPath, name, ext } = await acquireInput(source, tempDir);
+      const rawName = path.basename(name);
+      const baseName = safeBaseName(name);
+      const safeName = asAudio ? `${baseName}.mp3` : (rawName.startsWith('-') ? `${baseName}${ext}` : rawName);
+      const outputPath = path.join(tempDir, `trimmed_${safeName}`);
       const duration = Math.max(0.1, end - start);
-      const attempt = (mode, target = outputPath) => runFfmpeg(ffmpegBin, trimArgs(inputPath, target, start, duration, mode));
+      const attempt = (mode, target = outputPath) => runFfmpeg(resolveFfmpeg(isPackaged), trimArgs(inputPath, target, start, duration, mode));
       let trimmed = false;
 
       if (asAudio) {
@@ -119,12 +154,11 @@ function createMediaTools({ isPackaged }) {
           const fallbackWav = path.join(tempDir, `trimmed_${baseName}.wav`);
           try {
             await attempt('wav', fallbackWav);
-            const wavBytes = await fs.readFile(fallbackWav);
-            return { name: `trim_${baseName}.wav`, buffer: wavBytes, mime: 'audio/wav', size: wavBytes.length };
           } catch (wavErr) {
             console.warn('ffmpeg wav trim failed:', wavErr.message);
             throw new Error('Impossible de découper la piste audio de cette vidéo.');
           }
+          return importFile(fallbackWav, `trim_${baseName}.wav`, source);
         }
       } else if (ext === '.webm') {
         // Stream copy preserves per-frame dynamic resolution, aspect ratio animations,
@@ -150,20 +184,21 @@ function createMediaTools({ isPackaged }) {
           }
         }
       }
-
-      const trimmedBytes = await fs.readFile(outputPath);
-      return {
-        name: `trim_${safeName}`,
-        buffer: trimmedBytes,
-        size: trimmedBytes.length,
-        ...(asAudio ? { mime: outputPath.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg' } : {})
-      };
-    } finally {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    }
+      return importFile(outputPath, `trim_${safeName}`, source);
+    });
   }
 
-  return { extractAudio, trim };
+  // Imports a saved meme as-is; GIF duration is computed here so the page need not read the bytes.
+  async function uploadSavedMeme({ name, server, token }) {
+    const file = savedMemePath(name);
+    const asset = await importFile(file, path.basename(file), { server, token });
+    if (!/\.gif$/i.test(file)) return { asset };
+    const { getGifDuration } = await import('../shared/protocol.mjs');
+    const info = getGifDuration(await fs.readFile(file));
+    return info ? { asset, gifInfo: info } : { asset };
+  }
+
+  return { extractAudio, trim, uploadSavedMeme };
 }
 
-module.exports = { createMediaTools, resolveFfmpeg, runFfmpeg, safeBaseName, validateRange, extractArgs, trimArgs, FFMPEG_TIMEOUT_MS };
+module.exports = { createMediaTools, resolveFfmpeg, runFfmpeg, safeBaseName, validateRange, extractArgs, trimArgs, uploadWithRetry, FFMPEG_TIMEOUT_MS };

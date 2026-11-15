@@ -44,7 +44,7 @@ async function uploadAsset(file, asset, server, token) {
   try {
     const response = await fetch(new URL('/api/media', base), { method:'POST', redirect:'error', headers:{ Authorization:`Bearer ${token}`, 'Content-Type':'application/octet-stream', 'Content-Length':String(asset.bytes), 'X-Filename':encodeURIComponent(asset.name) }, body:stream, duplex:'half', signal:AbortSignal.timeout(TRANSFER_MS) });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Import impossible.');
+    if (!response.ok) throw Object.assign(new Error(result.error || 'Import impossible.'), { status:response.status });
     assetURL(result, server);
     return result;
   } finally { stream.destroy(); }

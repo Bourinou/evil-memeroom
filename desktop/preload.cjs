@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('memeroom', {
   info: () => ipcRenderer.invoke('app:info'),
   saveSettings: value => ipcRenderer.invoke('settings:save', value),
@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('memeroom', {
   deleteSavedMeme: name => ipcRenderer.invoke('savedMemes:delete', name),
   renameSavedMeme: (oldName, newName) => ipcRenderer.invoke('savedMemes:rename', oldName, newName),
   readSavedMeme: name => ipcRenderer.invoke('savedMemes:read', name),
+  uploadSavedMeme: options => ipcRenderer.invoke('savedMemes:upload', options),
+  pathForFile: file => webUtils.getPathForFile(file),
   trimMedia: options => ipcRenderer.invoke('media:trim', options),
   extractAudio: options => ipcRenderer.invoke('media:extractAudio', options),
   saveHistory: list => ipcRenderer.invoke('history:save', list),
