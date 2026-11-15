@@ -19,18 +19,18 @@ test('download page handles unpublished builds and only lists valid local instal
   const f = await fixture(t);
   assert.deepEqual(await (await fetch(f.base + '/api/downloads')).json(), { windows: null, linux: null, macArm64: null, macIntel: null });
   assert.match(await (await fetch(f.base + '/telecharger')).text(), /Télécharger l’application/);
-  await writeFile(path.join(f.releasesDir, 'MemeRoom-Setup-0.3.0.exe'), 'installer');
-  await writeFile(path.join(f.releasesDir, 'downloads.json'), JSON.stringify({ windows: { version: '0.3.0', filename: 'MemeRoom-Setup-0.3.0.exe' }, linux: { version: '0.3.0', filename: '../secret' } }));
+  await writeFile(path.join(f.releasesDir, 'evil-memeroom-Setup-0.3.0.exe'), 'installer');
+  await writeFile(path.join(f.releasesDir, 'downloads.json'), JSON.stringify({ windows: { version: '0.3.0', filename: 'evil-memeroom-Setup-0.3.0.exe' }, linux: { version: '0.3.0', filename: '../secret' } }));
   const data = await (await fetch(f.base + '/api/downloads')).json();
-  assert.equal(data.windows.bytes, 9); assert.equal(data.windows.url, '/releases/MemeRoom-Setup-0.3.0.exe'); assert.equal(data.linux, null);
-  const mac = { macArm64:{version:'0.4.3',filename:'MemeRoom-0.4.3-Mac-arm64.zip'}, macIntel:{version:'0.4.3',filename:'MemeRoom-0.4.3-Mac-x64.zip'} };
+  assert.equal(data.windows.bytes, 9); assert.equal(data.windows.url, '/releases/evil-memeroom-Setup-0.3.0.exe'); assert.equal(data.linux, null);
+  const mac = { macArm64:{version:'0.4.3',filename:'evil-memeroom-0.4.3-Mac-arm64.zip'}, macIntel:{version:'0.4.3',filename:'evil-memeroom-0.4.3-Mac-x64.zip'} };
   for (const item of Object.values(mac)) await writeFile(path.join(f.releasesDir,item.filename),'mac zip');
   await writeFile(path.join(f.releasesDir,'downloads.json'),JSON.stringify(mac));
   const available = await (await fetch(f.base + '/api/downloads')).json();
   for (const platform of Object.keys(mac)) { assert.equal(available[platform].bytes,7); assert.equal((await fetch(f.base + available[platform].url,{method:'HEAD'})).status,200); }
 });
 test('release binaries stream exact bytes, HEAD and ranges; metadata is never cached', async t => {
-  const f = await fixture(t), name = 'MemeRoom-Setup-0.3.0.exe';
+  const f = await fixture(t), name = 'evil-memeroom-Setup-0.3.0.exe';
   await writeFile(path.join(f.releasesDir, name), '0123456789');
   const url = `${f.base}/releases/${name}`;
   const full = await fetch(url); assert.equal(await full.text(), '0123456789'); assert.match(full.headers.get('cache-control'), /immutable/);
@@ -41,20 +41,20 @@ test('release binaries stream exact bytes, HEAD and ranges; metadata is never ca
   for (const range of ['bytes=10-', 'bytes=-0', 'bytes=4-2', 'bytes=0-1,5-6', 'bad']) assert.equal((await fetch(url, { headers: { range } })).status, 416);
   await writeFile(path.join(f.releasesDir, 'latest.yml'), 'version: 0.3.0');
   assert.equal((await fetch(f.base + '/releases/latest.yml')).headers.get('cache-control'), 'no-store');
-  for (const name of ['downloads.json', 'secret.txt', 'MemeRoom-Setup-0.3.0.exe.tmp', '..%2fpackage.json', 'nested/MemeRoom-Setup-0.3.0.exe']) assert.equal((await fetch(f.base + '/releases/' + name)).status, 404);
+  for (const name of ['downloads.json', 'secret.txt', 'evil-memeroom-Setup-0.3.0.exe.tmp', '..%2fpackage.json', 'nested/evil-memeroom-Setup-0.3.0.exe']) assert.equal((await fetch(f.base + '/releases/' + name)).status, 404);
 });
 test('release symlinks cannot expose a file outside the release directory', async t => {
   if (process.platform === 'win32') { t.skip('Creating file symlinks requires an elevated Windows privilege; exercised on Linux.'); return; }
   const f = await fixture(t);
   await writeFile(path.join(f.directory, 'secret'), 'secret');
-  await symlink('../secret', path.join(f.releasesDir, 'MemeRoom-Setup-0.3.0.exe'));
-  assert.equal((await fetch(f.base + '/releases/MemeRoom-Setup-0.3.0.exe')).status, 404);
+  await symlink('../secret', path.join(f.releasesDir, 'evil-memeroom-Setup-0.3.0.exe'));
+  assert.equal((await fetch(f.base + '/releases/evil-memeroom-Setup-0.3.0.exe')).status, 404);
 });
 test('release staging verifies both hashes before publishing and rejects reused versions', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'memeroom-staging-'));
   const windowsDir = path.join(root, 'win'), linuxDir = path.join(root, 'linux'), outputDir = path.join(root, 'out');
   await mkdir(windowsDir); await mkdir(linuxDir);
-  const exe = 'MemeRoom-Setup-0.3.0.exe', appimage = 'MemeRoom-0.3.0-Linux-x86_64.AppImage';
+  const exe = 'evil-memeroom-Setup-0.3.0.exe', appimage = 'evil-memeroom-0.3.0-Linux-x86_64.AppImage';
   async function build(dir, filename, manifestName, bytes) {
     const sha512 = createHash('sha512').update(bytes).digest('base64');
     await writeFile(path.join(dir, filename), bytes);
@@ -73,4 +73,18 @@ test('release staging verifies both hashes before publishing and rejects reused 
   await build(linuxDir, appimage, 'latest-linux.yml', 'recompiled');
   await assert.rejects(stageReleases(options), /immuable/);
   assert.equal(await readFile(path.join(outputDir, appimage), 'utf8'), 'linux');
+});
+test('download filenames match package.json artifact names', async () => {
+  const { downloadFilenames } = await import('../server/release-platforms.mjs');
+  assert.deepEqual(downloadFilenames('1.2.3'), {
+    windows: 'evil-memeroom-Setup-1.2.3.exe', linux: 'evil-memeroom-1.2.3-Linux-x86_64.AppImage',
+    macArm64: 'evil-memeroom-1.2.3-Mac-arm64.zip', macIntel: 'evil-memeroom-1.2.3-Mac-x64.zip'
+  });
+});
+test('legacy MemeRoom-* files already published stay listed and served', async t => {
+  const f = await fixture(t), name = 'MemeRoom-Setup-0.3.0.exe';
+  await writeFile(path.join(f.releasesDir, name), 'installer');
+  await writeFile(path.join(f.releasesDir, 'downloads.json'), JSON.stringify({ windows: { version: '0.3.0', filename: name } }));
+  assert.equal((await (await fetch(f.base + '/api/downloads')).json()).windows.url, `/releases/${name}`);
+  assert.equal(await (await fetch(`${f.base}/releases/${name}`)).text(), 'installer');
 });

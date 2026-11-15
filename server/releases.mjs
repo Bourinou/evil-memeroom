@@ -1,11 +1,9 @@
 import { open, realpath, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { downloadFilenames } from './release-platforms.mjs';
+import { downloadFilenames, legacyDownloadFilenames, releaseBinaryPattern } from './release-platforms.mjs';
 
-const versionPattern = '\\d+\\.\\d+\\.\\d+';
-const binaryPattern = new RegExp(`^MemeRoom-(?:Setup-${versionPattern}\\.exe(?:\\.blockmap)?|${versionPattern}-Linux-x86_64\\.AppImage|${versionPattern}-Mac-(?:arm64|x64)\\.zip)$`);
-export const releaseFilename = name => typeof name === 'string' && (binaryPattern.test(name) || ['latest.yml', 'latest-linux.yml'].includes(name));
+export const releaseFilename = name => typeof name === 'string' && (releaseBinaryPattern.test(name) || ['latest.yml', 'latest-linux.yml'].includes(name));
 const DOWNLOAD_PLATFORMS = ['windows', 'linux', 'macArm64', 'macIntel'];
 
 export function parseByteRange(rangeHeader, totalSize) {
@@ -34,8 +32,8 @@ export async function listDownloads(directory) {
   for (const platform of DOWNLOAD_PLATFORMS) {
     const item = manifest?.[platform];
     if (!item || !/^\d+\.\d+\.\d+$/.test(item.version)) continue;
-    const expected = downloadFilenames(item.version)[platform];
-    if (item.filename !== expected) continue;
+    const expected = [downloadFilenames(item.version)[platform], legacyDownloadFilenames(item.version)[platform]].find(name => name === item.filename);
+    if (!expected) continue;
     try {
       const info = await stat(await containedFile(directory, expected));
       if (info.isFile() && info.size > 0) result[platform] = { version: item.version, bytes: info.size, url: `/releases/${expected}` };

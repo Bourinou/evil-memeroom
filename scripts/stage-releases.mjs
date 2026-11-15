@@ -14,10 +14,10 @@ export async function sha512(file) {
 
 export async function stageReleases({ version, windowsDir, linuxDir, macDir, outputDir }) {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Version invalide.');
-  const plans = [], downloads = {};
+  const plans = [], downloads = {}, names = downloadFilenames(version);
   for (const [platform, directory, metadata, filename] of [
-    ['windows', windowsDir, 'latest.yml', `MemeRoom-Setup-${version}.exe`],
-    ['linux', linuxDir, 'latest-linux.yml', `MemeRoom-${version}-Linux-x86_64.AppImage`]
+    ['windows', windowsDir, 'latest.yml', names.windows],
+    ['linux', linuxDir, 'latest-linux.yml', names.linux]
   ]) {
     const manifest = yaml.load(await readFile(path.join(directory, metadata), 'utf8'));
     const entry = manifest?.files?.find(file => file.url === filename);

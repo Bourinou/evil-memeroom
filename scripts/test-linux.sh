@@ -22,6 +22,6 @@ cd ../..
 export LD_LIBRARY_PATH="$test_dir/test-libs/root/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export APPIMAGE_EXTRACT_AND_RUN=1
 app_version="$(node -p 'require("./package.json").version')"
-export MEMEROOM_TEST_EXE="$source_dir/release/MemeRoom-$app_version-Linux-x86_64.AppImage"
+export MEMEROOM_TEST_EXE="$source_dir/release/evil-memeroom-$app_version-Linux-x86_64.AppImage"
 node tests/desktop.e2e.mjs
 cp -- .test-artifacts/packaged-results.json "$source_dir/.test-artifacts/linux-results.json"

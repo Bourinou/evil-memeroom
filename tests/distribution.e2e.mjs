@@ -39,7 +39,7 @@ try {
   }
   const corrupt = path.join(output, 'corrupt'); await mkdir(corrupt);
   await copyFile('releases/latest.yml', path.join(corrupt, 'latest.yml'));
-  await writeFile(path.join(corrupt, `MemeRoom-Setup-${version}.exe`), 'incomplete installer');
+  await writeFile(path.join(corrupt, `evil-memeroom-Setup-${version}.exe`), 'incomplete installer');
   corruptServer = createRoomServer({ host: '127.0.0.1', port: 0, dataDir: null, releasesDir: corrupt });
   const badAddress = await corruptServer.start();
   await assert.rejects(app.evaluate((_electron, options) => global.runDistributionCheck(options), { platform: 'windows', url: `http://127.0.0.1:${badAddress.port}/releases/`, directory: path.join(output, 'rejected') }), /checksum mismatch/i);

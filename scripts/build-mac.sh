@@ -22,5 +22,5 @@ else
   node scripts/pack-mac.mjs release/mac
 fi
 node scripts/mac-metadata.mjs release/mac
-cp -- release/mac/MemeRoom-*-Mac-*.zip release/mac/mac-downloads.json "$source_dir/release/mac/"
+cp -- release/mac/evil-memeroom-*-Mac-*.zip release/mac/mac-downloads.json "$source_dir/release/mac/"
 echo "Archives Mac disponibles dans $source_dir/release/mac/"

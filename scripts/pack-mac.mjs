@@ -3,6 +3,7 @@ import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import yazl from 'yazl';
+import { downloadFilenames } from '../server/release-platforms.mjs';
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 const directory = path.resolve(process.argv[2] || 'release/mac');
 for (const arch of ['x64', 'arm64']) {
@@ -19,7 +20,7 @@ for (const arch of ['x64', 'arm64']) {
   zip.addFile(path.resolve('scripts/Installer MemeRoom.command'), 'Installer MemeRoom.command', { mode:0o100755 });
   zip.addBuffer(Buffer.from('Décompressez le ZIP. Lancez Installer MemeRoom.command à côté de MemeRoom.app.\nCe script installe l’application dans ~/Applications et répare sa signature locale.\nIl demande votre accord et ne désactive pas Gatekeeper pour les autres applications.\nSi macOS bloque le script, utilisez Confidentialité et sécurité > Ouvrir quand même, uniquement pour cette archive de confiance.\nCette version communautaire n’est pas notariée par Apple.\n'), 'INSTALLATION.txt');
   if (!links) throw new Error('Les liens symboliques des frameworks Mac sont absents.');
-  const writing = pipeline(zip.outputStream, createWriteStream(path.join(directory, `MemeRoom-${version}-Mac-${arch}.zip`)));
+  const writing = pipeline(zip.outputStream, createWriteStream(path.join(directory, downloadFilenames(version)[arch === 'x64' ? 'macIntel' : 'macArm64'])));
   zip.end(); await writing;
   console.log(`Archive Mac ${arch} : ${links} liens symboliques conservés.`);
 }
