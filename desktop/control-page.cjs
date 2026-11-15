@@ -30,6 +30,7 @@ const files = new Map([
   ['/media-view.mjs', ['public/media-view.mjs', 'text/javascript; charset=utf-8']],
   ['/connection.mjs', ['public/connection.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/protocol.mjs', ['shared/protocol.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/history.mjs', ['shared/history.mjs', 'text/javascript; charset=utf-8']],
   ['/favicon.svg', ['public/favicon.svg', 'image/svg+xml']],
   ['/icon.png', ['public/icon.png', 'image/png']]
 ]);

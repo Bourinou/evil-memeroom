@@ -1,34 +1,41 @@
 import { hasTimedMedia } from '../shared/protocol.mjs';
+import { mergeHistory } from '../shared/history.mjs';
 import { $, native, node, state, notify, resolveServer, SAVED_MIME_TYPES } from './state.mjs';
 import { attach, uploadFiles, renderAttachments, renderSend, renderSubtitles, showPreview } from './composer.mjs';
 import { showTab } from '../app.mjs';
 
-function historyStorageKey() {
-  return 'evil-memeroom:history';
-}
-export function cleanHistory(list) {
-  if (!Array.isArray(list)) return [];
-  return list.filter(item => {
-    if (!item || typeof item !== 'object') return false;
-    const hasCaption = typeof item.caption === 'string' && item.caption.trim().length > 0;
-    const hasMedia = item.media && typeof item.media === 'object' && (item.media.url || item.media.name);
-    const hasAudio = item.audio && typeof item.audio === 'object' && (item.audio.url || item.audio.name);
-    return hasCaption || hasMedia || hasAudio;
-  }).slice(0, 100);
-}
-export function loadHistoryFromStorage() {
+const LEGACY_STORAGE_KEY = 'evil-memeroom:history';
+
+// The history file (native.saveHistory) is the only store. The old localStorage copy is
+// read one last time, merged into the file, then removed.
+export async function loadHistory(fileList) {
+  let legacy = [];
+  let hadLegacy = false;
   try {
-    const raw = localStorage.getItem(historyStorageKey());
-    const parsed = raw ? JSON.parse(raw) : [];
-    return cleanHistory(parsed);
-  } catch { return []; }
-}
-export function saveHistoryToStorage(list) {
-  const clean = cleanHistory(list);
-  try {
-    localStorage.setItem(historyStorageKey(), JSON.stringify(clean));
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (raw !== null) {
+      hadLegacy = true;
+      legacy = JSON.parse(raw);
+    }
   } catch {}
-  native.saveHistory(clean).catch(() => {});
+  const merged = mergeHistory(fileList, legacy);
+  if (hadLegacy) {
+    try {
+      await native.saveHistory(merged);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {}
+  }
+  return merged;
+}
+function saveHistory() {
+  native.saveHistory(state.messageHistory).catch(() => {});
+}
+// Add items (live events or server history); incoming items win over stored duplicates.
+export function recordHistory(items) {
+  state.messageHistory = mergeHistory(items, state.messageHistory);
+  saveHistory();
+  updateHistoryBadge();
+  if (state.currentTab === 'history') renderHistory();
 }
 export function updateHistoryBadge() {
   const countEl = $('#history-count');
@@ -40,6 +47,26 @@ function formatTime(timestamp) {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+async function fetchHistoryFile(asset, server, fallbackName, fallbackMime) {
+  const base = server || resolveServer(state.target?.server);
+  if (asset.url) {
+    try {
+      const resp = await fetch(new URL(asset.url, base).href);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        return new File([blob], asset.name || fallbackName, { type: asset.mime || blob.type });
+      }
+    } catch {}
+  }
+  if (asset.name) {
+    try {
+      const data = await native.readSavedMeme(asset.name);
+      const ext = asset.name.slice(asset.name.lastIndexOf('.')).toLowerCase();
+      return new File([data.buffer], asset.name, { type: asset.mime || SAVED_MIME_TYPES[ext] || fallbackMime });
+    } catch {}
+  }
+  return null;
 }
 async function insertHistoryItem(item) {
   if (!state.connected || !state.room) {
@@ -55,85 +82,34 @@ async function insertHistoryItem(item) {
   state.cues = item.subtitles || item.cues || [];
   renderSubtitles();
 
-  const filesToUpload = [];
-
+  // Empty both slots first: a missing media must not leave the previous attachment behind.
+  state.visual = null;
+  state.audio = null;
+  let visualFile = null;
+  let audioFile = null;
   if (item.media) {
     const existing = state.library.find(m => m.id === item.media.id);
-    if (existing) {
-      attach(existing, false);
-    } else {
-      let file = null;
-      const mediaBase = item.server || resolveServer(state.target?.server);
-      const url = item.media.url ? new URL(item.media.url, mediaBase).href : '';
-      if (url) {
-        try {
-          const resp = await fetch(url);
-          if (resp.ok) {
-            const blob = await resp.blob();
-            file = new File([blob], item.media.name || 'image', { type: item.media.mime || blob.type });
-          }
-        } catch {}
-      }
-      if (!file && item.media.name) {
-        try {
-          const data = await native.readSavedMeme(item.media.name);
-          const ext = item.media.name.slice(item.media.name.lastIndexOf('.')).toLowerCase();
-          const mime = item.media.mime || SAVED_MIME_TYPES[ext] || 'application/octet-stream';
-          file = new File([data.buffer], item.media.name, { type: mime });
-        } catch {}
-      }
-      if (file) filesToUpload.push(file);
-    }
-  } else {
-    state.visual = null;
+    if (existing) attach(existing, false);
+    else visualFile = await fetchHistoryFile(item.media, item.server, 'image', 'application/octet-stream');
   }
-
   if (item.audio) {
     const existing = state.library.find(m => m.id === item.audio.id);
-    if (existing) {
-      attach(existing, true);
-    } else {
-      let file = null;
-      const mediaBase = item.server || resolveServer(state.target?.server);
-      const url = item.audio.url ? new URL(item.audio.url, mediaBase).href : '';
-      if (url) {
-        try {
-          const resp = await fetch(url);
-          if (resp.ok) {
-            const blob = await resp.blob();
-            file = new File([blob], item.audio.name || 'audio.mp3', { type: item.audio.mime || blob.type });
-          }
-        } catch {}
-      }
-      if (!file && item.audio.name) {
-        try {
-          const data = await native.readSavedMeme(item.audio.name);
-          const ext = item.audio.name.slice(item.audio.name.lastIndexOf('.')).toLowerCase();
-          const mime = item.audio.mime || SAVED_MIME_TYPES[ext] || 'audio/mpeg';
-          file = new File([data.buffer], item.audio.name, { type: mime });
-        } catch {}
-      }
-      if (file) filesToUpload.push(file);
-    }
-  } else {
-    state.audio = null;
+    if (existing) attach(existing, true);
+    else audioFile = await fetchHistoryFile(item.audio, item.server, 'audio.mp3', 'audio/mpeg');
   }
-
   renderAttachments();
   renderSend();
 
-  if (filesToUpload.length > 0) {
-    await uploadFiles(filesToUpload);
+  if (visualFile) await uploadFiles([visualFile]);
+  if (audioFile) await uploadFiles([audioFile], true);
+  if ((item.media && !state.visual) || (item.audio && !state.audio)) {
+    notify('Média introuvable : message inséré sans son média.', true);
+    return;
   }
   notify('Message inséré dans le compositeur.');
 }
 
 export function renderHistory() {
-  const validHistory = cleanHistory(state.messageHistory);
-  if (validHistory.length !== state.messageHistory.length) {
-    state.messageHistory = validHistory;
-    saveHistoryToStorage(state.messageHistory);
-  }
   updateHistoryBadge();
   const container = $('#history-list');
   if (!container) return;
@@ -232,7 +208,7 @@ export function renderHistory() {
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
       state.messageHistory = state.messageHistory.filter(h => h.id !== item.id);
-      saveHistoryToStorage(state.messageHistory);
+      saveHistory();
       updateHistoryBadge();
       renderHistory();
       notify('Message supprimé de l’historique.');
@@ -250,7 +226,7 @@ export function renderHistory() {
 }
 $('#clear-history')?.addEventListener('click', () => {
   state.messageHistory = [];
-  saveHistoryToStorage(state.messageHistory);
+  saveHistory();
   renderHistory();
   updateHistoryBadge();
   notify('Historique effacé.');

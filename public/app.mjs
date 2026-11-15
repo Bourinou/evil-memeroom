@@ -2,7 +2,7 @@ import { cleanClientState } from './shared/protocol.mjs';
 import { $, native, state, notify, keyFor } from './app/state.mjs';
 import { renderRooms, renderLibrary, chooseRoom } from './app/rooms.mjs';
 import { renderSettings } from './app/settings.mjs';
-import { cleanHistory, loadHistoryFromStorage, saveHistoryToStorage, updateHistoryBadge, renderHistory } from './app/history.mjs';
+import { loadHistory, updateHistoryBadge, renderHistory } from './app/history.mjs';
 import { loadSavedMemes } from './app/saved-memes.mjs';
 import './app/composer.mjs';
 import './app/trim.mjs';
@@ -38,20 +38,12 @@ $('#duration')?.addEventListener('change', () => {
 });
 
 async function init() {
-  state.messageHistory = loadHistoryFromStorage();
   const info = await native.info(); state.settings = info.settings; state.localServer = info.server; state.addresses = info.addresses;
   state.mac = info.platform === 'darwin';
   if (state.mac) $('#pause-shortcut-note').textContent = 'Pause rapide : Cmd + Maj + F8';
   if (info.shortcutError) $('#shortcut-hint').textContent = info.shortcutError;
   state.client = cleanClientState(info.clientState || state.client);
-  if (Array.isArray(info.history) && info.history.length) {
-    const merged = [...state.messageHistory];
-    for (const item of info.history) {
-      if (!merged.some(m => m.id === item.id)) merged.push(item);
-    }
-    state.messageHistory = cleanHistory(merged);
-    saveHistoryToStorage(state.messageHistory);
-  }
+  state.messageHistory = await loadHistory(info.history);
   for (const display of info.displays) $('#setting-display').add(new Option(display.label, display.id));
   $('#pause-reception').hidden = false;
   native.onSettings(value => { const pauseChanged = state.settings.paused !== value.paused; state.settings = value; renderSettings(); if (pauseChanged && state.connected) state.connection.request('status', { paused:state.settings.paused }).catch(() => {}); });

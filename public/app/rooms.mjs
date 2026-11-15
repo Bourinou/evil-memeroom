@@ -3,7 +3,8 @@ import { Connection } from '../connection.mjs';
 import { $, native, node, state, notify, saveClient, keyFor, resolveServer, referenceFor } from './state.mjs';
 import { renderNickname } from './settings.mjs';
 import { renderSend, renderAttachments, renderSubtitles, getCachedGifInfo } from './composer.mjs';
-import { loadHistoryFromStorage, saveHistoryToStorage, updateHistoryBadge, renderHistory } from './history.mjs';
+import { recordHistory, updateHistoryBadge, renderHistory } from './history.mjs';
+import { toHistoryItem } from '../shared/history.mjs';
 
 const DEFAULT_SERVER = 'https://memeroom.tonamielarose.fr/';
 let connecting = false, joining = false, mode = 'create', retryTimer, retries = 0, directoryRequest;
@@ -77,24 +78,7 @@ function handleEvent(event) {
     const media = event.media || null;
     const audio = event.audio || null;
     if (!caption && !media && !audio) return;
-    const historyItem = {
-      id: event.id,
-      sender: event.sender?.name || 'Inconnu',
-      caption,
-      media,
-      audio,
-      duration: event.duration || 5,
-      customDuration: event.customDuration === true,
-      sentAt: event.sentAt || Date.now(),
-      server: resolveServer(state.target.server),
-      kind: event.media?.kind || (event.audio ? 'audio' : 'text')
-    };
-    if (!state.messageHistory.some(item => item.id === historyItem.id)) {
-      state.messageHistory.unshift(historyItem);
-      saveHistoryToStorage(state.messageHistory);
-      updateHistoryBadge();
-      if (state.currentTab === 'history') renderHistory();
-    }
+    recordHistory([toHistoryItem(event, resolveServer(state.target.server))]);
     const isSelf = !!state.room?.memberId && event.sender?.id === state.room.memberId;
     if (isSelf && state.settings.hideSelf) return;
     if (!state.settings.paused) {
@@ -144,37 +128,10 @@ export async function attemptJoin(currentEpoch, create) {
     state.audio = state.library.find(item => item.id === state.audio?.id) || state.audio;
     if (state.visual && isVisualTrimmed) state.visual.isTrimmed = true;
     if (state.audio && isAudioTrimmed) state.audio.isTrimmed = true;
-    const stored = loadHistoryFromStorage();
-    for (const item of stored) {
-      if (!state.messageHistory.some(existing => existing.id === item.id)) {
-        state.messageHistory.push(item);
-      }
-    }
     if (Array.isArray(data.history)) {
-      for (const item of data.history.slice().reverse()) {
-        const caption = item.caption || '';
-        const media = item.media || null;
-        const audio = item.audio || null;
-        if (!caption && !media && !audio) continue;
-        const itemRecord = {
-          id: item.id,
-          sender: item.sender?.name || (typeof item.sender === 'string' ? item.sender : 'Inconnu'),
-          caption,
-          media,
-          audio,
-          duration: item.duration || 5,
-          sentAt: item.sentAt || Date.now(),
-          server: resolveServer(state.target.server),
-          kind: item.kind || item.media?.kind || (item.audio ? 'audio' : 'text')
-        };
-        if (!state.messageHistory.some(existing => existing.id === itemRecord.id)) {
-          state.messageHistory.unshift(itemRecord);
-        }
-      }
+      const server = resolveServer(state.target.server);
+      recordHistory(data.history.map(item => toHistoryItem(item, server)));
     }
-    saveHistoryToStorage(state.messageHistory);
-    updateHistoryBadge();
-    if (state.currentTab === 'history') renderHistory();
     state.client.rooms = [state.target, ...client.rooms.filter(entry => keyFor(entry) !== keyFor(state.target))];
     state.client.active = { code: state.target.code, server: state.target.server };
     const saved = await saveClient();
