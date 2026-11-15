@@ -1,5 +1,5 @@
 import { hasTimedMedia } from '../shared/protocol.mjs';
-import { mergeHistory, savedFileName, setSavedName, renameSavedName, removeSavedName } from '../shared/history.mjs';
+import { mergeHistory, isInRoom, withRoom, savedFileName, setSavedName, renameSavedName, removeSavedName } from '../shared/history.mjs';
 import { $, native, node, state, notify, resolveServer, SAVED_MIME_TYPES } from './state.mjs';
 import { attach, uploadFiles, renderAttachments, renderSend, renderSubtitles, showPreview } from './composer.mjs';
 import { showTab } from '../app.mjs';
@@ -67,14 +67,19 @@ export function recordHistory(items) {
     const named = setSavedName(items, id, name);
     if (!sameList(named, items)) { items = named; pendingSaved.delete(id); }
   }
-  state.messageHistory = mergeHistory(items, state.messageHistory);
+  state.messageHistory = mergeHistory(withRoom(items, state.target?.code), state.messageHistory);
   saveHistory();
   updateHistoryBadge();
   if (state.currentTab === 'history') renderHistory();
 }
+// Items of the current room and server (plus old items without a room).
+function visibleHistory() {
+  const server = state.target ? resolveServer(state.target.server) : undefined;
+  return state.messageHistory.filter(item => isInRoom(item, server, state.target?.code));
+}
 export function updateHistoryBadge() {
   const countEl = $('#history-count');
-  if (countEl) countEl.textContent = String(state.messageHistory.length);
+  if (countEl) countEl.textContent = String(visibleHistory().length);
 }
 function formatTime(timestamp) {
   if (!timestamp) return '';
@@ -152,7 +157,8 @@ export function renderHistory() {
   for (const player of container.querySelectorAll('video')) { player.pause(); player.removeAttribute('src'); player.load(); }
   container.replaceChildren();
 
-  if (!state.messageHistory.length) {
+  const visible = visibleHistory();
+  if (!visible.length) {
     const emptyMsg = node('p', 'Aucun message dans l’historique pour le moment.', 'muted');
     emptyMsg.style.padding = '30px 10px';
     emptyMsg.style.textAlign = 'center';
@@ -160,7 +166,7 @@ export function renderHistory() {
     return;
   }
 
-  for (const item of state.messageHistory) {
+  for (const item of visible) {
     const card = node('div', undefined, 'history-card');
 
     if (item.media || item.audio) {
@@ -261,7 +267,8 @@ export function renderHistory() {
   }
 }
 $('#clear-history')?.addEventListener('click', () => {
-  state.messageHistory = [];
+  const cleared = new Set(visibleHistory());
+  state.messageHistory = state.messageHistory.filter(item => !cleared.has(item));
   saveHistory();
   renderHistory();
   updateHistoryBadge();

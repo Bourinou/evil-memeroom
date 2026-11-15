@@ -88,6 +88,17 @@ export function mergeHistory(...lists) {
   return cleanHistory(merged);
 }
 
+// Items are shown in the room they were recorded in. Old items have no `room` and stay visible everywhere.
+export function isInRoom(item, server, room) {
+  if (!item?.room) return true;
+  return item.room === room && (!item.server || item.server === server);
+}
+// Stamp the current room on items that do not have one yet (optional field of history.json).
+export function withRoom(items, room) {
+  if (!room) return items;
+  return items.map(item => (item && typeof item === 'object' && !item.room ? { ...item, room } : item));
+}
+
 // Build a history item from a live reaction event or a server history entry.
 export function toHistoryItem(source, server) {
   const sender = source.sender?.name || (typeof source.sender === 'string' ? source.sender : 'Inconnu');

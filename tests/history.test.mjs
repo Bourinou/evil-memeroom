@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HISTORY_LIMIT, cleanHistory, mergeHistory, toHistoryItem, setSavedName, renameSavedName, removeSavedName, savedFileName } from '../shared/history.mjs';
+import { HISTORY_LIMIT, cleanHistory, mergeHistory, toHistoryItem, setSavedName, renameSavedName, removeSavedName, savedFileName, isInRoom, withRoom } from '../shared/history.mjs';
 
 const text = (id, sentAt) => ({ id, caption: `m${id}`, sentAt });
 
@@ -67,4 +67,22 @@ test('savedFileName prefers savedName and keeps the legacy name fallback', () =>
   assert.equal(savedFileName({ name: 'lol.gif', savedName: 'lol 1.gif' }), 'lol 1.gif');
   assert.equal(savedFileName({ name: 'old.gif' }), 'old.gif');
   assert.equal(savedFileName(null), '');
+});
+
+test('isInRoom matches room and server; old items without room stay visible everywhere', () => {
+  const item = { id: 1, room: 'ABC', server: 'http://s' };
+  assert.equal(isInRoom(item, 'http://s', 'ABC'), true);
+  assert.equal(isInRoom(item, 'http://s', 'XYZ'), false);
+  assert.equal(isInRoom(item, 'http://other', 'ABC'), false);
+  assert.equal(isInRoom({ id: 2, room: 'ABC' }, 'http://other', 'ABC'), true);
+  assert.equal(isInRoom({ id: 3, server: 'http://old' }, 'http://s', 'XYZ'), true);
+  assert.equal(isInRoom(null, 'http://s', 'XYZ'), true);
+});
+
+test('withRoom stamps only items without a room and does not mutate', () => {
+  const list = [{ id: 1 }, { id: 2, room: 'OLD' }];
+  const out = withRoom(list, 'NEW');
+  assert.deepEqual(out.map(item => item.room), ['NEW', 'OLD']);
+  assert.equal('room' in list[0], false);
+  assert.equal(withRoom(list, undefined), list);
 });
