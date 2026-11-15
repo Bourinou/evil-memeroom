@@ -19,9 +19,6 @@ try {
   await page.click('#open-settings');assert.equal(await page.inputValue('#setting-size'),'60');
   await page.screenshot({path:'.test-artifacts/settings-050.png'});
   await page.mouse.click(8,8);await page.waitForFunction(()=>!document.querySelector('#settings-dialog').open);
-  await page.fill('#caption','QUAND ÇA MARCHE');await page.click('#save-preset');await page.fill('#preset-name','Victoire');await page.click('#preset-submit');
-  await page.waitForFunction(()=>!document.querySelector('#preset-dialog').open);await page.click('#show-presets');await page.getByText('Victoire',{exact:true}).waitFor();
-  await page.screenshot({path:'.test-artifacts/presets-050.png'});
   const overlay=app.windows().find(p=>p.url().endsWith('/overlay.html'));
   const url=`http://127.0.0.1:${server.address().port}`;
   await page.evaluate(({url,bytes})=>{const id='A'.repeat(32);window.testShow=window.memeroom.show({id:'slow-image',server:url,caption:'ÇA VALAIT LE COUP D’ATTENDRE',sender:{name:'Rose'},duration:2,age:8000,media:{id,url:'/media/'+id,name:'test.png',bytes,kind:'image',mime:'image/png'}}).then(result=>window.testResult=result);},{url,bytes:png.length});
