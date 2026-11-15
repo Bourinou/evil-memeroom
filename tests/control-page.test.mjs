@@ -12,11 +12,11 @@ test('the remote control and its dependencies load from the bundle without an HT
   assert.equal(page.status, 200);
   assert.match(await page.text(), /id="send-form"/);
   assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
-  for (const file of ['/app.mjs', '/styles.css', '/connection.mjs', '/media-view.mjs', '/shared/protocol.mjs', '/favicon.svg', '/icon.png']) {
+  for (const file of ['/app.mjs', '/app/state.mjs', '/app/rooms.mjs', '/app/composer.mjs', '/app/upload.mjs', '/app/history.mjs', '/app/saved-memes.mjs', '/app/trim.mjs', '/app/settings.mjs', '/styles.css', '/connection.mjs', '/media-view.mjs', '/shared/protocol.mjs', '/favicon.svg', '/icon.png']) {
     const response = await handler(new Request(new URL(file, CONTROL_URL)));
     assert.equal(response.status, 200, file); assert.ok((await response.arrayBuffer()).byteLength > 0);
   }
-  for (const file of ['/package.json', '/desktop/preload.cjs', '/server/index.mjs', '/%2e%2e/package.json']) {
+  for (const file of ['/package.json', '/app/missing.mjs', '/desktop/preload.cjs', '/server/index.mjs', '/%2e%2e/package.json']) {
     assert.equal((await handler(new Request(new URL(file, CONTROL_URL)))).status, 404, file);
   }
   assert.equal((await handler(new Request(CONTROL_URL, { method: 'POST' }))).status, 404);
