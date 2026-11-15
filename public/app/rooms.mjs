@@ -261,7 +261,7 @@ $('#access-form').addEventListener('submit', async event => {
     const data = await state.connection.request('room-settings', { isPrivate: $('#access-visibility').value === 'private', passwordAction: $('#access-password-action').value, password: $('#access-password').value });
     if (state.target !== selected || state.room !== current) return;
     state.room.access = data.access; state.target.joinToken = data.joinToken; if (data.ownerToken) state.target.ownerToken = data.ownerToken;
-    state.client.rooms = state.client.rooms.map(entry => keyFor(entry) === keyFor(state.target) ? { ...target } : entry);
+    state.client.rooms = state.client.rooms.map(entry => keyFor(entry) === keyFor(state.target) ? { ...state.target } : entry);
     await saveClient(); renderRooms(); $('#access-dialog').close(); notify('Accès de la room enregistrés.');
   } catch (error) { $('#access-error').textContent = error.message; }
   finally { $('#access-submit').disabled = false; }
