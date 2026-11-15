@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { CONTROL_URL, installControlPage } from '../desktop/control-page.cjs';
 
 test('the remote control and its dependencies load from the bundle without an HTTP server', async () => {
@@ -31,19 +34,47 @@ test('room HTTP requests keep their authorization and binary body when forwarded
   assert.deepEqual(new Uint8Array(await received.request.arrayBuffer()), new Uint8Array([0, 1, 255]));
 });
 
-test('saved memes with spaces in filenames decode and serve correctly', async t => {
-  const os = await import('node:os');
-  const path = await import('node:path');
-  const { mkdir, writeFile, rm } = await import('node:fs/promises');
+async function savedMemesHandler(t, files) {
+  const memesDir = await mkdtemp(path.join(os.tmpdir(), 'memes-'));
+  t.after(() => rm(memesDir, { recursive: true, force: true }));
+  for (const [name, content] of Object.entries(files)) await writeFile(path.join(memesDir, name), content);
   let handler;
-  installControlPage({ protocol: { handle(_scheme, callback) { handler = callback; } }, fetch() {} });
-  const memeDir = path.join(os.homedir(), 'evil-memeroom');
-  await mkdir(memeDir, { recursive: true });
-  const testFile = path.join(memeDir, 'test space meme.png');
-  await writeFile(testFile, Buffer.from('test-image-bytes'));
-  t.after(() => rm(testFile, { force: true }));
+  installControlPage({ protocol: { handle(_scheme, callback) { handler = callback; } }, fetch() {} }, { memesDir });
+  return (name, init) => handler(new Request(new URL('/saved-memes/' + name, CONTROL_URL), init));
+}
 
-  const response = await handler(new Request(new URL('/saved-memes/' + encodeURIComponent('test space meme.png'), CONTROL_URL)));
+test('saved memes with spaces in filenames decode and serve correctly', async t => {
+  const get = await savedMemesHandler(t, { 'test space meme.png': 'test-image-bytes' });
+  const response = await get(encodeURIComponent('test space meme.png'));
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'image/png');
+  assert.equal(response.headers.get('content-length'), '16');
   assert.equal(await response.text(), 'test-image-bytes');
+});
+
+test('saved memes honour byte ranges', async t => {
+  const get = await savedMemesHandler(t, { 'clip.mp4': '0123456789' });
+  const partial = await get('clip.mp4', { headers: { Range: 'bytes=2-5' } });
+  assert.equal(partial.status, 206);
+  assert.equal(partial.headers.get('content-range'), 'bytes 2-5/10');
+  assert.equal(partial.headers.get('content-length'), '4');
+  assert.equal(await partial.text(), '2345');
+  const suffix = await get('clip.mp4', { headers: { Range: 'bytes=-3' } });
+  assert.equal(suffix.status, 206);
+  assert.equal(await suffix.text(), '789');
+  const unsatisfiable = await get('clip.mp4', { headers: { Range: 'bytes=10-20' } });
+  assert.equal(unsatisfiable.status, 416);
+  assert.equal(unsatisfiable.headers.get('content-range'), 'bytes */10');
+});
+
+test('saved memes answer HEAD without a body and reject bad names', async t => {
+  const get = await savedMemesHandler(t, { 'clip.mp4': '0123456789', '.hidden.png': 'x' });
+  const head = await get('clip.mp4', { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('content-length'), '10');
+  assert.equal(head.headers.get('accept-ranges'), 'bytes');
+  assert.equal(await head.text(), '');
+  for (const name of ['%E0%A4%A', 'missing.png', '.hidden.png', '..%2F..%2Fpackage.json']) {
+    assert.equal((await get(name)).status, 404, name);
+  }
 });
