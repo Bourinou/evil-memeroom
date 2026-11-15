@@ -5,7 +5,7 @@ const WEBM_NEEDLE = Buffer.from('webm');
 const OPUS_NEEDLE = Buffer.from('OpusHead');
 const VORBIS_NEEDLE = Buffer.from('vorbis');
 
-const MP4_BRANDS = new Set(['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash', 'MSNV']);
+const MP4_BRANDS = new Set(['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash', 'MSNV', 'mmp4', 'f4v ', '3gp4', '3gp5', '3gp6', '3gp7']);
 
 // Frame sync plus non-reserved version, layer, bitrate and sample rate.
 function isMp3Frame(buffer) {

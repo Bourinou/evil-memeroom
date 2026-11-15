@@ -12,13 +12,13 @@ const ftyp = brand => {
 const mp3Frame = (b1, b2, b3 = 0) => Buffer.from([0xff, b1, b2, b3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
 test('accepts known MP4 brands', () => {
-  for (const brand of ['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash', 'MSNV']) {
+  for (const brand of ['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash', 'MSNV', 'mmp4', 'f4v ', '3gp4', '3gp5', '3gp6', '3gp7']) {
     assert.deepEqual(detectMedia(ftyp(brand)), { mime: 'video/mp4', kind: 'video' }, brand);
   }
 });
 
 test('rejects non-MP4 ftyp containers', () => {
-  for (const brand of ['heic', 'heix', 'mif1', 'avif', 'avis', 'qt  ', 'M4A ', 'M4B ', '3gp4']) {
+  for (const brand of ['heic', 'heix', 'mif1', 'avif', 'avis', 'qt  ', 'M4A ', 'M4B ']) {
     assert.equal(detectMedia(ftyp(brand)), null, brand);
   }
 });
@@ -37,4 +37,14 @@ test('rejects invalid MP3 frame headers', () => {
   assert.equal(detectMedia(mp3Frame(0xfb, 0xf0)), null); // bad bitrate (1111)
   assert.equal(detectMedia(mp3Frame(0xfb, 0x0c)), null); // reserved sample rate (11)
   assert.equal(detectMedia(mp3Frame(0xe0, 0x00)), null); // free bitrate, reserved layer
+});
+
+test('keeps detecting WebM (video and audio-only) and Ogg unchanged', () => {
+  const ebml = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01]);
+  const webm = Buffer.concat([ebml, Buffer.from('Bwebm'), Buffer.alloc(16)]);
+  assert.deepEqual(detectMedia(webm), { mime: 'video/webm', kind: 'video' });
+  const audioWebm = Buffer.concat([ebml, Buffer.from('Bwebm'), Buffer.from('A_OPUS'), Buffer.alloc(16)]);
+  assert.deepEqual(detectMedia(audioWebm), { mime: 'video/webm', kind: 'video' });
+  assert.equal(detectMedia(Buffer.concat([ebml, Buffer.from('matroska'), Buffer.alloc(16)])), null);
+  assert.deepEqual(detectMedia(Buffer.concat([Buffer.from('OggS'), Buffer.alloc(24), Buffer.from('OpusHead')])), { mime: 'audio/ogg', kind: 'audio' });
 });
