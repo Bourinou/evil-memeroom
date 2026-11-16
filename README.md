@@ -1,19 +1,13 @@
-# MemeRoom 0.6.0
+# evil-memeroom
 
-MemeRoom partage du texte, des images, des vidéos et des sons entre les membres d’une room. L’application de bureau affiche un overlay transparent qui laisse passer les clics et le clavier. Le site propose les téléchargements ; la télécommande reste intégrée à l’application.
-
-## Nouveautés de la version 0.6.0
-
-- Maintien de l’overlay au-dessus des fenêtres plein écran sans bordure, sans activation, et adaptation aux changements d’écran. Voir les [limites du plein écran exclusif](docs/PLEIN-ECRAN.md).
-- Dépôt public, contributions ouvertes et licence CC BY-NC-SA 4.0 avec attribution à **Rose Roubaud**, autrice originale.
-- Exclusion des données locales via `.gitignore`.
-- Liens vers les sources et la licence depuis la page de téléchargement.
+evil-memeroom partage du texte, des images, des vidéos et des sons entre les membres d’une room. L’application de bureau affiche un overlay transparent qui laisse passer les clics et le clavier, y compris au-dessus des fenêtres plein écran sans bordure ([limites du plein écran exclusif](docs/PLEIN-ECRAN.md)). Le site propose les téléchargements ; la télécommande reste intégrée à l’application.
 
 ## Documentation
 
 - [Contribuer](CONTRIBUTING.md) et [crédits](AUTHORS.md)
 - [Architecture et responsabilités des dossiers](docs/ARCHITECTURE.md)
 - [Développement, interface et tests](docs/DEVELOPPEMENT.md)
+- [Publier une version](docs/RELEASE.md)
 - [Sécurité et signalement privé](SECURITY.md)
 - [Installer le serveur derrière Nginx](DEPLOYER.md)
 
@@ -86,13 +80,13 @@ Prérequis de développement : Node.js 26 ou supérieur, et un bureau compatible
 npm ci
 npm start
 npm run server
-npm run dist -- --config.directories.output=release/build-0.6.0
+npm run dist -- --config.directories.output=release/build-<version>
 wsl -e bash scripts/build-linux.sh --skip-checks
 wsl -e bash scripts/build-mac.sh
 npm run stage:releases
 npm run pack:server
 ```
 
-Les vérifications de cette version sont ciblées : serveur, mots de passe, nettoyage, messages conservés après expiration, protocole antivirus avec un service simulé, réglages et téléchargement lent dans Electron Windows. Le moteur ClamAV Docker et l’installation Mac ne sont pas validés sur cette machine. Les suites longues de lecture ne sont pas systématiquement relancées.
+Vérifications : `npm run check` (syntaxe) et `npm test` (tests unitaires). Les tests Electron (`*.e2e.mjs`) demandent un bureau interactif ; voir [docs/DEVELOPPEMENT.md](docs/DEVELOPPEMENT.md).
 
-Le déploiement complet, incluant les nouveaux réglages Nginx et ClamAV, est expliqué dans [DEPLOYER.md](DEPLOYER.md). Les mises à jour Windows/Linux sont recherchées au démarrage sur le serveur officiel. Les mises à jour Mac restent manuelles. Les rooms, préférences et messages enregistrés sont conservés.
+Le déploiement complet, incluant les réglages Nginx et ClamAV, est expliqué dans [DEPLOYER.md](DEPLOYER.md). Les mises à jour Windows/Linux sont recherchées au démarrage sur le serveur officiel. Les mises à jour Mac restent manuelles. Les rooms, préférences et messages enregistrés sont conservés.
