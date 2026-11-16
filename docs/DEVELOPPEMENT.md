@@ -1,6 +1,6 @@
 # Développement et vérifications
 
-Installer Node.js 24 LTS et Git. À la racine du clone :
+Installer Node.js 26 LTS et Git. À la racine du clone :
 
 ```bash
 npm ci

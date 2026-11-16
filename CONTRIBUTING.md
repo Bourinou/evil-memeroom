@@ -4,7 +4,7 @@ MemeRoom est un projet de **Rose Roubaud**. Le code est consultable et modifiabl
 
 ## Première installation
 
-Installer Git et Node.js 24 LTS, puis :
+Installer Git et Node.js 26 LTS, puis :
 
 ```bash
 git clone https://github.com/Rose-Roubaud/memeroom.git

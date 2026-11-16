@@ -80,7 +80,7 @@ Cinq tentatives de mot de passe par adresse et par room sont autorisées sur cin
 - Linux : `releases/evil-memeroom-<version>-Linux-x86_64.AppImage`. Autoriser l’exécution, puis lancer le fichier. L’overlay utilise X11/XWayland. Sur Arch, les dépendances usuelles sont `fuse2 gtk3 nss alsa-lib xorg-xwayland`. Sans FUSE, utiliser `--appimage-extract-and-run`.
 - Mac : choisir le ZIP Apple Silicon ou Intel, le décompresser, puis ouvrir `Installer MemeRoom.command` à côté de `MemeRoom.app`. Voir les limites et la procédure de signature Apple dans [DEPLOYER.md](DEPLOYER.md).
 
-Prérequis de développement : Node.js 22.12 ou supérieur, et un bureau compatible Electron.
+Prérequis de développement : Node.js 26 ou supérieur, et un bureau compatible Electron.
 
 ```powershell
 npm ci
