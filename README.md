@@ -1,6 +1,6 @@
-# evil-memeroom
+# evil-memeroom 1.0.2
 
-evil-memeroom partage du texte, des images, des vidéos et des sons entre les membres d’une room. L’application de bureau affiche un overlay transparent qui laisse passer les clics et le clavier, y compris au-dessus des fenêtres plein écran sans bordure ([limites du plein écran exclusif](docs/PLEIN-ECRAN.md)). Le site propose les téléchargements ; la télécommande reste intégrée à l’application.
+evil-memeroom partage du texte, des images, des vidéos et des sons entre les membres d’une room. L’application de bureau affiche un overlay transparent qui laisse passer les clics et le clavier, y compris au-dessus des fenêtres plein écran sans bordure ([limites du plein écran exclusif](docs/PLEIN-ECRAN.md)). La télécommande reste intégrée à l’application.
 
 ## Documentation
 
@@ -28,7 +28,7 @@ Le projet est distribué sous [CC BY-NC-SA 4.0](LICENSE) : attribution, usage no
 
 ## Utilisation
 
-1. Installer l’application depuis https://memeroom.tonamielarose.fr/telecharger.
+1. Installer l’application depuis les [releases GitHub](https://github.com/Bourinou/evil-memeroom/releases).
 2. Ajouter une room en indiquant son pseudo et le serveur commun, puis créer une room ou rejoindre une room existante.
 3. Dans Composer, ajouter du texte, une image/vidéo et éventuellement un audio. Les sous-titres SRT et fichiers temporaires de la room sont dans Options.
 4. Cliquer sur Envoyer pour diffuser, Aperçu pour voir le résultat, ou Enregistrer pour conserver ce message avec ses fichiers sur cet appareil.
@@ -36,7 +36,7 @@ Le projet est distribué sous [CC BY-NC-SA 4.0](LICENSE) : attribution, usage no
 
 Une image ou un texte sans audio reste affiché 5 secondes par défaut, après chargement ; « Choisir la durée » accepte de 0,1 à 600 secondes. Vidéos et audios n’ont pas cette limite de durée. Le raccourci d’arrêt, la pause ou un nouvel envoi accepté peuvent interrompre le contenu. Un lecteur bloqué pendant 30 secondes est arrêté ; le téléchargement a un délai distinct de 30 minutes maximum.
 
-**Ctrl + Maj + F9** arrête le contenu actuel. Ce raccourci est modifiable dans Réglages. **Ctrl + Maj + F8** met la réception en pause (Cmd + Maj + F8 sur Mac). Fermer la fenêtre conserve la réception ; utiliser Quitter MemeRoom dans la zone de notification pour arrêter l’application.
+**Ctrl + Maj + F9** arrête le contenu actuel. Ce raccourci est modifiable dans Réglages. **Ctrl + Maj + F8** met la réception en pause (Cmd + Maj + F8 sur Mac). Fermer la fenêtre conserve la réception ; utiliser Quitter evil memeroom dans la zone de notification pour arrêter l’application.
 
 ## Rooms et données
 
@@ -70,8 +70,8 @@ Cinq tentatives de mot de passe par adresse et par room sont autorisées sur cin
 
 ## Installation et compilation
 
-- Windows : `releases/evil-memeroom-Setup-<version>.exe`. Le setup propose le dossier d’installation. Il n’est pas signé avec un certificat éditeur ; les avertissements Windows restent possibles.
-- Linux : `releases/evil-memeroom-<version>-Linux-x86_64.AppImage`. Autoriser l’exécution, puis lancer le fichier. L’overlay utilise X11/XWayland. Sur Arch, les dépendances usuelles sont `fuse2 gtk3 nss alsa-lib xorg-xwayland`. Sans FUSE, utiliser `--appimage-extract-and-run`.
+- Windows : `evil-memeroom-Setup-<version>.exe`. Le setup propose le dossier d’installation. Il n’est pas signé avec un certificat éditeur ; les avertissements Windows restent possibles.
+- Linux : `evil-memeroom-<version>-Linux-x86_64.AppImage`. Autoriser l’exécution, puis lancer le fichier. L’overlay utilise X11/XWayland. Sur Arch, les dépendances usuelles sont `fuse2 gtk3 nss alsa-lib xorg-xwayland`. Sans FUSE, utiliser `--appimage-extract-and-run`.
 - Mac : choisir le ZIP Apple Silicon ou Intel, le décompresser, puis ouvrir `Installer MemeRoom.command` à côté de `MemeRoom.app`. Voir les limites et la procédure de signature Apple dans [DEPLOYER.md](DEPLOYER.md).
 
 Prérequis de développement : Node.js 26 ou supérieur, et un bureau compatible Electron.
@@ -89,4 +89,4 @@ npm run pack:server
 
 Vérifications : `npm run check` (syntaxe) et `npm test` (tests unitaires). Les tests Electron (`*.e2e.mjs`) demandent un bureau interactif ; voir [docs/DEVELOPPEMENT.md](docs/DEVELOPPEMENT.md).
 
-Le déploiement complet, incluant les réglages Nginx et ClamAV, est expliqué dans [DEPLOYER.md](DEPLOYER.md). Les mises à jour Windows/Linux sont recherchées au démarrage sur le serveur officiel. Les mises à jour Mac restent manuelles. Les rooms, préférences et messages enregistrés sont conservés.
+Le déploiement complet, incluant les réglages Nginx et ClamAV, est expliqué dans [DEPLOYER.md](DEPLOYER.md). Les mises à jour Windows/Linux sont recherchées au démarrage via les releases GitHub. Les mises à jour Mac restent manuelles. Les rooms, préférences et messages enregistrés sont conservés.
