@@ -407,7 +407,13 @@ if (singleInstance) app.whenReady().then(async () => {
   ipcMain.handle('app:minimize', event => { if (trustedControl(event)) { if (process.platform === 'linux') control.minimize(); else control.hide(); } });
   ipcMain.handle('app:restart', event => {
     if (!trustedControl(event)) throw new Error('Accès refusé.');
-    app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden' && a !== '--silent') });
+    const args = process.argv.slice(1).filter(a => a !== '--hidden' && a !== '--silent');
+    // The relaunched process would otherwise lose the single-instance race against this one.
+    app.releaseSingleInstanceLock();
+    if (process.platform === 'linux' && process.env.APPIMAGE) {
+      // This process cannot gain privileges (no_new_privs), so a child AppImage cannot FUSE-mount itself: extract instead.
+      app.relaunch({ execPath: '/bin/sh', args: ['-c', 'sleep 1; APPIMAGE_EXTRACT_AND_RUN=1 exec "$0" "$@"', process.env.APPIMAGE, ...args] });
+    } else app.relaunch({ args });
     quitting = true;
     app.exit(0);
   });
